@@ -1,0 +1,306 @@
+rules:
+
+  # ── SQL Injection ────────────────────────────────────────────────────
+  - id: python-sqli-string-format
+    message: "SQL Injection: 사용자 입력이 문자열 포맷으로 쿼리에 삽입됨 (CWE-89)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-89"
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: $CURSOR.execute("..." % ...)
+          - pattern: $CURSOR.execute("..." + ...)
+          - pattern: $CURSOR.execute(f"...")
+          - pattern: $CURSOR.execute("...".format(...))
+          - pattern: $DB.execute("..." % ...)
+          - pattern: $DB.execute("..." + ...)
+          - pattern: $DB.execute(f"...")
+
+  - id: python-sqli-raw-query
+    message: "SQL Injection: ORM raw() 또는 extra()에 사용자 입력 삽입 가능 (CWE-89)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-89"
+      confidence: MEDIUM
+    pattern-either:
+      - pattern: $MODEL.objects.raw(f"...")
+      - pattern: $MODEL.objects.raw("..." % ...)
+      - pattern: $MODEL.objects.raw("..." + ...)
+      - pattern: $MODEL.objects.extra(where=[f"..."])
+
+  # ── Command Injection ────────────────────────────────────────────────
+  - id: python-cmdi-os-system
+    message: "Command Injection: os.system()에 사용자 입력이 포함될 수 있음 (CWE-78)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-78"
+      confidence: HIGH
+    pattern-either:
+      - pattern: os.system(f"...")
+      - pattern: os.system("..." + ...)
+      - pattern: os.system("..." % ...)
+
+  - id: python-cmdi-subprocess-shell
+    message: "Command Injection: subprocess에 shell=True와 변수 사용 (CWE-78)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-78"
+      confidence: HIGH
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+      - pattern-not: subprocess.$FUNC(["..."], shell=True, ...)
+
+  - id: python-cmdi-popen-shell
+    message: "Command Injection: os.popen()에 사용자 입력 포함 가능 (CWE-78)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-78"
+      confidence: MEDIUM
+    pattern-either:
+      - pattern: os.popen(f"...")
+      - pattern: os.popen("..." + ...)
+
+  # ── Path Traversal ───────────────────────────────────────────────────
+  - id: python-path-traversal-open
+    message: "Path Traversal: 검증 없이 사용자 입력으로 파일 열기 (CWE-22)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-22"
+      confidence: MEDIUM
+    pattern-either:
+      - pattern: open(request.$X, ...)
+      - pattern: open($REQUEST.args.get(...), ...)
+      - pattern: open($REQUEST.form.get(...), ...)
+      - pattern: open($REQUEST.json.get(...), ...)
+      - pattern: open($REQUEST.params.get(...), ...)
+
+  - id: python-path-traversal-pathlib
+    message: "Path Traversal: 검증 없이 사용자 입력으로 Path 구성 (CWE-22)"
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-22"
+      confidence: LOW
+    pattern-either:
+      - pattern: Path(request.$X)
+      - pattern: Path($BASE) / request.$X
+
+  # ── SSRF ─────────────────────────────────────────────────────────────
+  - id: python-ssrf-requests
+    message: "SSRF: 사용자가 제어하는 URL로 외부 요청 (CWE-918)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-918"
+      confidence: MEDIUM
+    pattern-either:
+      - pattern: requests.get(request.$X, ...)
+      - pattern: requests.get($REQUEST.args.get(...), ...)
+      - pattern: requests.post(request.$X, ...)
+      - pattern: requests.post($REQUEST.args.get(...), ...)
+  - id: python-ssrf-urllib
+    message: "SSRF: urllib로 사용자 제어 URL 요청 (CWE-918)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-918"
+      confidence: MEDIUM
+    pattern-either:
+      - pattern: urllib.request.urlopen(request.$X)
+      - pattern: urllib.request.urlopen($REQUEST.args.get(...))
+
+  # ── Insecure Deserialization ─────────────────────────────────────────
+  - id: python-pickle-loads
+    message: "Insecure Deserialization: 신뢰할 수 없는 데이터를 pickle.loads()로 역직렬화 (CWE-502)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-502"
+      confidence: HIGH
+    pattern-either:
+      - pattern: pickle.loads(request.$X)
+      - pattern: pickle.loads($REQUEST.data)
+      - pattern: pickle.loads($REQUEST.body)
+      - pattern: pickle.load(...)
+
+  - id: python-yaml-load-unsafe
+    message: "Insecure Deserialization: yaml.load() 사용 — yaml.safe_load() 사용 권장 (CWE-502)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-502"
+      confidence: HIGH
+    patterns:
+      - pattern: yaml.load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader)
+      - pattern-not: yaml.load(..., Loader=yaml.BaseLoader)
+
+  # ── Code Injection ────────────────────────────────────────────────────
+  - id: python-eval-injection
+    message: "Code Injection: eval()에 사용자 입력 실행 (CWE-94)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-94"
+      confidence: HIGH
+    pattern-either:
+      - pattern: eval(request.$X)
+      - pattern: eval($REQUEST.args.get(...))
+      - pattern: eval($REQUEST.form.get(...))
+      - pattern: exec(request.$X)
+      - pattern: exec($REQUEST.args.get(...))
+
+  # ── Template Injection ────────────────────────────────────────────────
+  - id: python-ssti-jinja2
+    message: "SSTI: Jinja2 템플릿에 사용자 입력이 직접 포함됨 (CWE-94)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-94"
+      confidence: HIGH
+    pattern-either:
+      - pattern: jinja2.Template(request.$X)
+      - pattern: jinja2.Template($REQUEST.args.get(...))
+      - pattern: render_template_string(request.$X)
+      - pattern: render_template_string(f"...")
+
+  # ── XSS (서버사이드) ──────────────────────────────────────────────────
+  - id: python-xss-flask-response
+    message: "XSS: 사용자 입력이 escape 없이 HTML 응답으로 반환됨 (CWE-79)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-79"
+      confidence: MEDIUM
+    pattern-either:
+      - pattern: return request.$X
+      - pattern: 'return $REQUEST.args.get(...), 200, {"Content-Type": "text/html"}'
+      - pattern: Response(request.$X, mimetype="text/html")
+
+  # ── Open Redirect ─────────────────────────────────────────────────────
+  - id: python-open-redirect
+    message: "Open Redirect: 사용자 입력으로 리다이렉트 (CWE-601)"
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-601"
+      confidence: MEDIUM
+    pattern-either:
+      - pattern: redirect(request.$X)
+      - pattern: redirect($REQUEST.args.get(...))
+      - pattern: redirect($REQUEST.form.get(...))
+
+  # ── Prompt Injection (AI Agent) ──────────────────────────────────────
+  - id: python-prompt-injection-anthropic
+    message: "Prompt Injection: 외부 데이터가 Anthropic API 프롬프트에 삽입됨 (CWE-1427)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-1427"
+      confidence: HIGH
+    pattern-either:
+      - pattern: $CLIENT.messages.create(..., system=request.$X, ...)
+      - pattern: $CLIENT.messages.create(..., system=f"...", ...)
+      - pattern: $CLIENT.messages.create(..., messages=[..., {"role": "user", "content": request.$X}, ...], ...)
+      - pattern: $CLIENT.beta.messages.create(..., system=request.$X, ...)
+
+  - id: python-prompt-injection-openai
+    message: "Prompt Injection: 외부 데이터가 OpenAI API 프롬프트에 삽입됨 (CWE-1427)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-1427"
+      confidence: HIGH
+    pattern-either:
+      - pattern: $CLIENT.chat.completions.create(..., messages=[..., {"role": "user", "content": request.$X}, ...], ...)
+      - pattern: $CLIENT.chat.completions.create(..., messages=[..., {"role": "system", "content": request.$X}, ...], ...)
+
+  - id: python-prompt-injection-langchain
+    message: "Prompt Injection: LangChain 체인/에이전트에 검증되지 않은 외부 입력 전달 (CWE-1427)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-1427"
+      confidence: MEDIUM
+    pattern-either:
+      - pattern: $CHAIN.invoke(request.$X)
+      - pattern: $CHAIN.invoke($REQUEST.args.get(...))
+      - pattern: $AGENT.run(request.$X)
+      - pattern: $TOOL.run(request.$X)
+
+  - id: python-llm-output-exec
+    message: "LLM Output Execution: LLM 응답이 검증 없이 코드/셸로 실행됨 (CWE-1427)"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-1427"
+      confidence: HIGH
+    pattern-either:
+      - pattern: eval($RESPONSE.content)
+      - pattern: exec($RESPONSE.content)
+      - pattern: os.system($RESPONSE.content)
+      - pattern: subprocess.run($RESPONSE.content, ..., shell=True, ...)
+
+  # ── DoS / Resource Exhaustion ────────────────────────────────────────
+  - id: python-redos-user-regex
+    message: "ReDoS: 사용자 입력으로 정규식 컴파일/실행 — 카타스트로픽 백트래킹 가능 (CWE-400)"
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-400"
+      confidence: HIGH
+    pattern-either:
+      - pattern: re.compile(request.$X)
+      - pattern: re.compile($REQUEST.args.get(...))
+      - pattern: re.match(request.$X, ...)
+      - pattern: re.search(request.$X, ...)
+      - pattern: re.findall(request.$X, ...)
+
+  - id: python-dos-zip-bomb
+    message: "Zip Bomb: 크기 검증 없이 사용자 파일 압축 해제 — DoS 가능 (CWE-400)"
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-400"
+      confidence: HIGH
+    pattern-either:
+      - pattern: zipfile.ZipFile(request.$X).extractall(...)
+      - pattern: zipfile.ZipFile($REQUEST.files.get(...)).extractall(...)
+      - pattern: tarfile.open(request.$X).extractall(...)
+      - pattern: $ZF.extractall(...)
+
+  - id: python-dos-xml-bomb
+    message: "XML Bomb: 신뢰할 수 없는 XML 파싱 — Billion Laughs 공격 가능 (CWE-400)"
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-400"
+      confidence: HIGH
+    pattern-either:
+      - pattern: xml.etree.ElementTree.parse(request.$X)
+      - pattern: xml.etree.ElementTree.fromstring(request.$X)
+      - pattern: ET.parse(request.$X)
+      - pattern: ET.fromstring(request.$X)
+      - pattern: lxml.etree.fromstring(request.$X)
+
+  # ── Hardcoded Secrets ─────────────────────────────────────────────────
+  - id: python-hardcoded-secret-key
+    message: "Hardcoded Secret: 소스코드에 시크릿 키/비밀번호가 하드코딩됨"
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-798"
+      confidence: MEDIUM
+    pattern-either:
+      - pattern: SECRET_KEY = "..."
+      - pattern: $APP.secret_key = "..."
+      - pattern: password = "..."
+      - pattern: api_key = "..."
+      - pattern: AWS_SECRET = "..."

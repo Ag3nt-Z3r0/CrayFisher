@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# 환경변수
+.env
+*.env
+
+# 스캔 결과 / 보고서 (선택적 공유)
+reports/
+/tmp/
+
+# 테스트용 클론 디렉터리
+/clones/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
