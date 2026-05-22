@@ -1,88 +1,87 @@
-# Skill 02-B: 수동 코드 리뷰
+# Skill 02-B: Manual Code Review
 
-## 목적
-Semgrep이 탐지하지 못하는 취약점을 LLM이 코드를 직접 읽어서 찾는다.
-이 skill은 특정 취약점 유형을 탐색하는 것이 아니라,
-코드가 데이터를 어떻게 다루는지 읽으면서 이상한 점을 발견하는 것이다.
+## Purpose
+Find vulnerabilities that Semgrep cannot detect by reading the code directly.
+This skill is not about hunting for a specific vuln class — it is about reading how the code handles data and noticing what looks wrong.
 
 ---
 
-## 절차
+## Procedure
 
-### Step 1 — 진입점 핸들러를 전체 읽는다
+### Step 1 — Read each entry-point handler in full
 
-01-B에서 식별한 고위험 진입점 파일들을 읽는다.
+Read the high-risk entry-point files identified in 01-B.
 ```bash
 python tools/file_read.py <handler_file> <entry_line> --context 60
 ```
 
-읽는 동안 아래 세 가지 질문만 유지한다:
-1. 이 코드에서 신뢰할 수 없는 데이터는 무엇인가?
-2. 그 데이터가 어디에 쓰이는가?
-3. 그 사용 방식이 위험한가?
+Hold only these three questions while reading:
+1. What data in this code is untrusted?
+2. Where is that data used?
+3. Is the way it is used dangerous?
 
-이 세 질문에 코드로 답할 수 없을 때 섣불리 판단을 내리지 않는다.
+If the code does not let you answer these three questions, do not jump to a conclusion.
 
-### Step 2 — 의심 지점을 발견하면: 멈추고, 읽고, 추적한다
+### Step 2 — When you spot a suspicious point: stop, read, trace
 
-코드를 읽다가 아래 중 하나를 발견하면 즉시 멈추고 추적을 시작한다.
+When you see one of the following while reading, stop immediately and start tracing.
 
-**멈추는 기준:**
-- 외부 데이터가 함수 호출의 인자로 들어가는 것을 봤다
-- 외부 데이터가 문자열 보간/연결에 쓰이는 것을 봤다
-- 외부 데이터가 다른 변수에 할당되는 것을 봤다
+**Triggers to stop:**
+- External data is passed as an argument to a function call
+- External data is interpolated/concatenated into a string
+- External data is assigned to another variable
 
-**추적 절차:**
+**Tracing procedure:**
 ```bash
-# 해당 함수 정의를 찾는다
+# Find the definition of the relevant function
 grep -rn "function <name>\|const <name>\|def <name>" <local_path> --include="*.ts" --include="*.py"
-# 찾은 위치를 읽는다
+# Read the location you found
 python tools/file_read.py <file> <line> --context 40
 ```
-함수 내부에서 또 다른 함수 호출이 있으면 그 함수도 읽는다.
-**읽지 않은 함수에 대해 "이 함수는 안전할 것이다"라고 가정하지 않는다.**
+If that function calls yet another function, read it too.
+**Do not assume "this function is probably safe" without reading it.**
 
-### Step 3 — 추적이 끝난 후에만 판단한다
+### Step 3 — Decide only after tracing is complete
 
-추적 결과가 아래 조건을 모두 만족할 때만 취약점을 기록한다:
+Record a vulnerability only when the trace satisfies every one of these:
 
-- [ ] 외부 입력 변수를 코드에서 확인했다 (파일:라인 인용)
-- [ ] 그 변수가 위험한 목적지에 도달하는 경로를 코드에서 확인했다 (각 단계 인용)
-- [ ] 그 경로에 입력을 차단하는 처리가 없음을 코드에서 확인했다 (없음을 확인한 근거 인용)
+- [ ] You confirmed the external-input variable in the code (cite file:line)
+- [ ] You confirmed the path by which that variable reaches a dangerous destination, in the code (cite each hop)
+- [ ] You confirmed in the code that no handling along that path blocks the input (cite the evidence for "none")
 
-세 조건 중 하나라도 코드 인용으로 채울 수 없으면 "추적 불완전"으로 기록하고 넘어간다.
+If any of the three cannot be filled with a code citation, log "trace incomplete" and move on.
 
-### Step 4 — 인증·권한은 코드로 확인한다
+### Step 4 — Verify auth / authorization in the code
 
-"이 엔드포인트는 인증이 필요할 것이다"라는 가정을 하지 않는다.
-미들웨어 체인을 직접 읽어서 인증 처리가 있는지 확인한다.
+Do not assume "this endpoint probably requires auth".
+Read the middleware chain directly and confirm whether auth handling is in place.
 
 ```bash
-# 라우터 설정 파일 또는 미들웨어 등록 위치 찾기
+# Find the router config file or where middleware is registered
 grep -rn "app\.use\|router\.use\|middleware\|guard\|interceptor" <local_path> -l
 python tools/file_read.py <middleware_file> <line> --context 30
 ```
 
-인증 미들웨어를 코드에서 확인하지 못했다면 "인증 없음으로 가정"이라고 명시한다.
+If you cannot confirm an auth middleware in the code, write "assumed no auth" explicitly.
 
 ---
 
-## 출력 형식
+## Output format
 
 ```
 ## Manual Review Finding #N
 
-**의심 지점:**
-근거: <file>:<line> → "<코드>"
+**Suspicious point:**
+Evidence: <file>:<line> → "<code>"
 
-**추적 경로:**
-1. <file>:<line> → "<코드>" — <이 단계에서 일어나는 일>
-2. <file>:<line> → "<코드>" — <이 단계에서 일어나는 일>
-3. <file>:<line> → "<코드>" — ← 위험 지점
+**Trace path:**
+1. <file>:<line> → "<code>" — <what happens at this step>
+2. <file>:<line> → "<code>" — <what happens at this step>
+3. <file>:<line> → "<code>" — ← dangerous point
 
-**차단 처리 여부:**
-없음 — 근거: <없음을 확인한 방법: 함수 전체를 읽었고 X가 없었음>
+**Blocking handling:**
+None — Evidence: <how you confirmed "none": read the whole function and X was absent>
 
-**판정: 유효 / 추적 불완전**
-불완전한 경우 어디서 추적이 끊겼는지 명시한다.
+**Verdict: valid / trace incomplete**
+If incomplete, state where the trace broke.
 ```

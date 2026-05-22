@@ -1,97 +1,126 @@
-# Skill 02-A: Semgrep 결과 해석
+# Skill 02-A: Semgrep Result Interpretation
 
-## 목적
-Semgrep이 표시한 위치를 출발점으로, 실제 코드를 읽어서 진짜 취약점인지 판단한다.
-Semgrep 결과는 "여기를 읽어보라"는 힌트다. 발견 자체가 취약점 증거가 아니다.
+## Purpose
+
+Use Semgrep's locations as starting points and read the code to decide
+whether each is a real bug. A Semgrep match is a "read here" hint, not
+evidence.
 
 ---
 
-## 절차
+## Procedure
 
-### Step 1 — Semgrep 실행
+### Step 1 — Run Semgrep
+
 ```bash
 python tools/semgrep_run.py <local_path>
 ```
 
-### Step 2 — 각 발견에 대해 코드를 읽는다
+**Rule load order** (driven by `is_agent_target` from
+`tools/detect_stack.py`):
 
-발견 목록을 CVSS가 높은 순서로 정렬하고, **하나씩** 아래 절차를 밟는다.
-여러 발견을 동시에 판단하지 않는다.
+When `is_agent_target = true`:
+
+1. `rules/semgrep/agent-frameworks.yaml`
+2. `rules/semgrep/agent-defaults.yaml`
+3. `rules/semgrep/trust-layer-promotion.yaml`
+4. `rules/semgrep/incomplete-fix-heuristics.yaml`
+5. `rules/semgrep/js-vuln.yaml` and `rules/semgrep/python-vuln.yaml` —
+   apply only to files the trust-graph marks as agent-irrelevant (admin
+   HTTP, ORM, static assets). This is the *supplement* mode.
+
+When `is_agent_target = false`:
+
+1. `rules/semgrep/js-vuln.yaml` and `rules/semgrep/python-vuln.yaml`
+   (the legacy web-vuln flow, unchanged).
+
+### Step 2 — Walk findings one at a time
+
+Sort by CVSS descending; process **one** finding at a time. Never
+adjudicate multiple findings in parallel.
 
 ```bash
 python tools/file_read.py <local_path>/<file> <line> --context 20
 ```
 
-### Step 3 — 코드를 읽으면서 이 질문들에 순서대로 답한다
+### Step 3 — Answer the four questions in order
 
-Semgrep이 가리킨 줄을 읽었다. 이제:
+For each Semgrep hit, after reading the line:
 
-**Q1. 이 줄에서 실제로 무슨 일이 일어나고 있는가?**
-읽은 코드를 한 문장으로 설명한다. Semgrep 경고 메시지를 복사하지 않는다.
+**Q1. What is this line actually doing?**
+One sentence in your own words. Do not paraphrase the Semgrep message.
 
-**Q2. 이 줄에 입력되는 값은 어디서 오는가?**
-해당 변수가 선언되거나 인자로 들어오는 위치를 읽는다. 코드에서 읽지 않았다면 "확인 안 됨"이라고 쓴다.
+**Q2. Where does the value entering this line come from?**
+Read the variable's declaration / parameter origin. Write "unconfirmed"
+if you did not actually read it.
 
 ```bash
-# 변수명 또는 인자명으로 정의 위치 검색
 grep -n "<variable_name>" <local_path>/<file>
 python tools/file_read.py <local_path>/<file> <definition_line> --context 10
 ```
 
-**Q3. 그 값이 이 줄에 도달하기 전에 어떤 처리를 거치는가?**
-중간 경로에 있는 함수들을 읽는다. 읽지 않은 함수에 대해 "아마 검증할 것이다"라고 쓰지 않는다.
+**Q3. What transforms does that value go through before this line?**
+Read the intermediate functions. Never assume "probably validates" on a
+function you did not read.
 
-**Q4. 이 코드가 실제로 실행되는 경로가 있는가?**
-이 함수를 호출하는 곳을 찾는다.
+**Q4. Is this code path actually reachable?**
+Find the caller.
+
 ```bash
 grep -rn "<function_name>\s*(" <local_path> --include="*.ts" --include="*.py" --include="*.js"
 ```
-호출자가 외부 요청 핸들러에서 시작하는지 확인한다.
 
-### Step 4 — 판정
+Confirm the caller chain starts at an external request handler.
 
-Q1~Q4의 답변에 코드 인용이 있는 경우에만 판정을 내린다.
+### Step 4 — Verdict
 
-**유효 (확인됨):**
-- 외부 입력이 이 줄에 도달하는 경로를 코드로 확인했다
-- 그 경로에 이 위험을 차단하는 처리가 없음을 코드로 확인했다
+Only adjudicate when Q1–Q4 each carry a code citation.
 
-**보류 (추적 불완전):**
-- 입력 출처를 코드에서 확인하지 못했다
-- 중간 함수 중 읽지 못한 것이 있다
+**Valid (confirmed):**
+
+- External input reaches this line — confirmed in code.
+- No sanitization breaks the chain — confirmed in code.
+
+**Hold (incomplete trace):**
+
+- Input origin not confirmed in code.
+- An intermediate function remains unread.
 
 **FP:**
-- 코드에서 직접 읽은 결과, 아래 중 하나를 확인했다:
-  - 파라미터화 쿼리 사용 (`?`, `$1`, `:name`) — 인용 필요
-  - TypeScript 타입이 `number`, `boolean`, union literal — 인용 필요
-  - 입력 전에 검증/인코딩 함수 호출 — 해당 함수 정의까지 읽어서 확인
-  - 하드코딩된 상수가 싱크에 전달됨 — 인용 필요
-  - 테스트 파일, dead code 마커 — 인용 필요
+
+- One of the following, each backed by a code citation:
+  - Parameterized query (`?`, `$1`, `:name`) — cite the line.
+  - TypeScript type constrained to `number`, `boolean`, or union
+    literal — cite the type declaration.
+  - A validation / encoding function runs before the sink — cite the
+    function definition you actually read.
+  - The sink receives a hardcoded constant — cite the line.
+  - Test file or dead-code marker — cite the marker.
 
 ---
 
-## 출력 형식
+## Output
 
 ```
 ## Semgrep Finding #N: <rule_id>
-위치: <file>:<line>
+Location: <file>:<line>
 
-**Q1 — 이 줄에서 일어나는 일:**
-<한 문장>
-근거: <file>:<line> → "<코드>"
+**Q1 — What this line does:**
+<one sentence>
+Evidence: <file>:<line> → "<code>"
 
-**Q2 — 입력 출처:**
-<확인됨/확인 안 됨>
-근거: <file>:<line> → "<코드>" (확인된 경우)
+**Q2 — Input origin:**
+<confirmed / unconfirmed>
+Evidence: <file>:<line> → "<code>"  (if confirmed)
 
-**Q3 — 중간 처리:**
-<없음 / 있음 — 내용>
-근거: <file>:<line> → "<코드>"
+**Q3 — Intermediate transforms:**
+<none / present — describe>
+Evidence: <file>:<line> → "<code>"
 
-**Q4 — 실행 경로:**
-<있음 / 없음 / 확인 안 됨>
-근거: <file>:<line> → "<코드>"
+**Q4 — Reachability:**
+<present / absent / unconfirmed>
+Evidence: <file>:<line> → "<code>"
 
-**판정: 유효 / 보류 / FP**
-이유: <Q1~Q4 중 어떤 근거로 이 판정을 내렸는지>
+**Verdict: valid / hold / FP**
+Reason: <which of Q1–Q4 drove the verdict>
 ```

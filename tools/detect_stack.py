@@ -26,9 +26,19 @@ FRAMEWORK_SIGS: list[tuple[str, list[str]]] = [
     ("langchain",       ["from langchain", "@langchain/", "langchain_core"]),
     ("llamaindex",      ["from llama_index", "llama-index"]),
     ("crewai",          ["from crewai", "CrewAI"]),
-    ("autogen",         ["from autogen", "AssistantAgent"]),
+    ("autogen",         ["from autogen", "AssistantAgent", "register_function"]),
     ("openai-agents",   ["Runner.run(", "from agents import", "openai.Agents"]),
+    ("openhands",       ["from openhands.", "OpenDevin", "openhands-ai"]),
+    ("pydantic-ai",     ["from pydantic_ai", "pydantic-ai"]),
+    ("semantic-kernel", ["semantic_kernel", "Microsoft.SemanticKernel"]),
+    ("agno",            ["from agno.", "from phi.agent", "phidata"]),
 ]
+
+# Frameworks that flip the agent-first analysis branch downstream.
+AGENT_FRAMEWORKS: set[str] = {
+    "mcp", "langchain", "llamaindex", "crewai", "autogen",
+    "openai-agents", "openhands", "pydantic-ai", "semantic-kernel", "agno",
+}
 
 DEP_FILES = {
     "package.json", "requirements.txt", "pyproject.toml",
@@ -68,10 +78,13 @@ def scan(root: Path):
                 pass
 
     primary = lang_counts.most_common(1)[0][0] if lang_counts else "unknown"
+    agent_frameworks = sorted(frameworks & AGENT_FRAMEWORKS)
     return {
         "primary_language": primary,
         "languages": dict(lang_counts.most_common()),
         "frameworks": sorted(frameworks),
+        "is_agent_target": bool(agent_frameworks),
+        "agent_frameworks": agent_frameworks,
         "total_lines": total_lines,
         "dependency_files": dep_files,
     }

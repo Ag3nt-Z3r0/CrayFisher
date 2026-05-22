@@ -3,49 +3,58 @@
 
   <reportable>
     <condition id="gcm-no-auth-tag">
-      AES-GCM 복호화 시 authTag 검증을 건너뛰거나 setAuthTag 호출이 없다.
-      확인: decipher.setAuthTag() 호출 없이 decipher.final() 이 호출되는 코드를 읽음.
+      AES-GCM decryption skips authTag verification, or setAuthTag is
+      never called.
+      Verify: read the code where decipher.final() is invoked without a
+      preceding decipher.setAuthTag() call.
     </condition>
     <condition id="weak-cipher-sensitive-data">
-      DES, RC4, ECB 모드, MD5/SHA1(서명/인증 목적)이 민감한 데이터 처리에 사용된다.
-      확인: 알고리즘 문자열('des-ecb', 'rc4', 'md5' 등)을 코드에서 읽고,
-      처리 대상 데이터가 민감한 것(비밀번호, 세션 토큰, 결제 정보 등)임을 확인.
+      DES, RC4, ECB mode, or MD5/SHA1 (for signing/authentication purposes)
+      is used on sensitive data.
+      Verify: read the algorithm string ('des-ecb', 'rc4', 'md5', etc.)
+      in the code and confirm the data being processed is sensitive
+      (passwords, session tokens, payment information, etc.).
     </condition>
     <condition id="hardcoded-key-iv">
-      암호화 키 또는 IV가 소스코드에 하드코딩되어 있다.
-      확인: createCipher 또는 createDecipheriv 인자를 코드에서 읽음.
+      An encryption key or IV is hardcoded in the source.
+      Verify: read the arguments to createCipher or createDecipheriv.
     </condition>
     <condition id="static-iv">
-      IV(초기화 벡터)가 항상 같은 고정 값을 사용한다.
-      확인: IV 생성 코드를 읽어 randomBytes 없이 상수임을 확인.
+      The IV (initialization vector) is always a fixed constant value.
+      Verify: read the IV-generation code and confirm it is a constant
+      without randomBytes.
     </condition>
   </reportable>
 
   <not_reportable>
-    <condition id="non-security-hash" reason="보안 목적 아님">
-      MD5/SHA1이 캐시 키, 중복 탐지, 파일 무결성 확인 등 비보안 목적으로 사용된다.
-      확인: 해시 결과의 사용 목적을 코드에서 읽음.
-      인증/서명에 사용되지 않으면 보안 취약점 아님.
+    <condition id="non-security-hash" reason="not a security purpose">
+      MD5/SHA1 is used for non-security purposes such as cache keys,
+      duplicate detection, or file-integrity checking.
+      Verify: read the code to confirm how the hash result is used.
+      If it is not used for authentication or signing, it is not a
+      security weakness.
     </condition>
-    <condition id="password-hashing-bcrypt" reason="의도된 설계">
-      bcrypt, argon2, PBKDF2, scrypt 로 비밀번호를 해싱한다.
-      이것은 취약점이 아니라 올바른 설계임.
+    <condition id="password-hashing-bcrypt" reason="intended design">
+      Passwords are hashed with bcrypt, argon2, PBKDF2, or scrypt.
+      This is correct design, not a vulnerability.
     </condition>
-    <condition id="no-sensitive-data" reason="영향 제한">
-      약한 알고리즘이지만 암호화 대상이 민감하지 않은 공개 데이터다.
-      확인: 암호화 대상 데이터를 코드에서 확인.
+    <condition id="no-sensitive-data" reason="bounded impact">
+      A weak algorithm is used, but the data being encrypted is non-sensitive
+      public data.
+      Verify: read the code to confirm what data is being encrypted.
     </condition>
-    <condition id="deprecated-but-unused-path" reason="미사용 코드">
-      약한 알고리즘이 있지만 해당 코드 경로가 실제로 실행되지 않는다.
-      확인: 호출자가 없음을 grep으로 확인.
+    <condition id="deprecated-but-unused-path" reason="dead code">
+      The weak algorithm exists, but the code path is never actually
+      executed.
+      Verify: confirm with grep that there are no callers.
     </condition>
   </not_reportable>
 
   <verify>
-    <item>알고리즘 이름 문자열을 코드에서 직접 읽었는가?</item>
-    <item>암호화/복호화 대상 데이터가 민감한지 코드에서 확인했는가?</item>
-    <item>GCM이라면 setAuthTag 호출 여부를 코드에서 읽었는가?</item>
-    <item>키/IV 생성 코드를 읽어 랜덤 생성 또는 하드코딩 여부를 확인했는가?</item>
+    <item>Did you read the algorithm name string directly from the code?</item>
+    <item>Did you confirm in the code whether the data being encrypted/decrypted is sensitive?</item>
+    <item>For GCM, did you read the code to check whether setAuthTag is called?</item>
+    <item>Did you read the key/IV generation code to confirm whether it is randomly generated or hardcoded?</item>
   </verify>
 
 </policy>

@@ -1,0 +1,324 @@
+rules:
+
+  # ─────────────────────────────────────────────────────────────────────
+  # MCP (Model Context Protocol) — JS/TS
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: mcp-tool-handler-no-input-validation
+    message: "MCP tool handler reads request.params.arguments without validation before passing to a sink (CWE-1427, LLM01/LLM06)."
+    severity: WARNING
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: MEDIUM
+      framework: mcp
+    patterns:
+      - pattern-either:
+          - pattern: |
+              server.setRequestHandler(CallToolRequestSchema, async ($REQ) => {
+                ...
+                const $X = $REQ.params.arguments.$KEY;
+                ...
+                $SINK($X, ...);
+              })
+          - pattern: |
+              server.setRequestHandler(CallToolRequestSchema, async ($REQ) => {
+                ...
+                $SINK($REQ.params.arguments.$KEY, ...);
+              })
+
+  - id: mcp-tool-description-from-external
+    message: "MCP tool description sourced from external data — tool poisoning surface (CWE-1427)."
+    severity: WARNING
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: MEDIUM
+      framework: mcp
+    patterns:
+      - pattern-either:
+          - pattern: |
+              { name: $N, description: $D, ... }
+      - metavariable-pattern:
+          metavariable: $D
+          patterns:
+            - pattern-either:
+                - pattern: await fetch(...)
+                - pattern: $X.text
+                - pattern: $X.content
+                - pattern: process.env.$ENV
+
+  - id: mcp-tool-result-returned-raw
+    message: "MCP tool returns raw external content as text — risk of recursive prompt injection on the next LLM turn (A3)."
+    severity: WARNING
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: MEDIUM
+      framework: mcp
+    pattern-either:
+      - pattern: |
+          return { content: [{ type: "text", text: `...${$EXT}` }] }
+      - pattern: |
+          return { content: [{ type: "text", text: $EXT }] }
+
+  # ─────────────────────────────────────────────────────────────────────
+  # LangChain — Python
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: langchain-agent-executor-no-max-iterations
+    message: "AgentExecutor constructed without max_iterations — context-window attack / runaway loop surface (LLM06)."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-400"
+      owasp-llm: "LLM06"
+      confidence: LOW
+      framework: langchain
+    pattern-either:
+      - pattern: AgentExecutor(agent=$A, tools=$T)
+      - pattern: AgentExecutor.from_agent_and_tools(agent=$A, tools=$T)
+    pattern-not: AgentExecutor(..., max_iterations=$N, ...)
+    pattern-not: AgentExecutor.from_agent_and_tools(..., max_iterations=$N, ...)
+
+  - id: langchain-tool-from-unvalidated-input
+    message: "LangChain @tool wraps a function whose argument flows directly to exec/shell — tool execution sink (CWE-78)."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-78"
+      owasp-llm: "LLM06"
+      confidence: MEDIUM
+      framework: langchain
+    pattern-either:
+      - pattern: |
+          @tool
+          def $F($ARG: str) -> $T:
+            ...
+            os.system($ARG)
+      - pattern: |
+          @tool
+          def $F($ARG: str) -> $T:
+            ...
+            subprocess.run($ARG, shell=True)
+      - pattern: |
+          @tool
+          def $F($ARG: str) -> $T:
+            ...
+            eval($ARG)
+
+  - id: langchain-tool-fs-no-sandbox
+    message: "LangChain @tool writes/reads filesystem paths from its argument — path traversal surface (CWE-22)."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-22"
+      owasp-llm: "LLM06"
+      confidence: MEDIUM
+      framework: langchain
+    pattern-either:
+      - pattern: |
+          @tool
+          def $F($PATH: str) -> $T:
+            ...
+            open($PATH, ...)
+      - pattern: |
+          @tool
+          def $F($PATH: str) -> $T:
+            ...
+            Path($PATH).read_text(...)
+
+  - id: langchain-system-prompt-concat-input
+    message: "System-role message constructed with f-string from user/tool input — instruction hierarchy bypass (A5)."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: MEDIUM
+      framework: langchain
+    pattern-either:
+      - pattern: |
+          ChatPromptTemplate.from_messages([
+            ("system", f"...{$X}..."),
+            ...
+          ])
+      - pattern: |
+          [SystemMessage(content=f"...{$X}..."), ...]
+
+  - id: langchain-memory-write-untrusted
+    message: "Memory.save_context writes external/tool data into memory without filtering — memory poisoning (A6)."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: LOW
+      framework: langchain
+    pattern: $MEM.save_context({"input": $TOOL_OUT}, {"output": $X})
+
+  # ─────────────────────────────────────────────────────────────────────
+  # CrewAI — Python
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: crewai-crew-tools-allowed-all
+    message: "Crew is built with all-tool exposure (tools=tools) — privilege over-grant (CWE-269, LLM06)."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-269"
+      owasp-llm: "LLM06"
+      confidence: LOW
+      framework: crewai
+    pattern: Crew(agents=$A, tasks=$T, tools=$ALL)
+
+  - id: crewai-task-output-feeds-shell
+    message: "CrewAI Task output passed directly to subprocess/exec — Tool Result Injection (A3, CWE-78)."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-78"
+      owasp-llm: "LLM01"
+      confidence: MEDIUM
+      framework: crewai
+    pattern-either:
+      - pattern: subprocess.run($TASK.output, ...)
+      - pattern: os.system($TASK.output)
+
+  # ─────────────────────────────────────────────────────────────────────
+  # AutoGen — Python
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: autogen-human-input-never
+    message: "AutoGen agent runs with human_input_mode=\"NEVER\" — no approval gate on tool calls (LLM06)."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-250"
+      owasp-llm: "LLM06"
+      confidence: HIGH
+      framework: autogen
+      default_check: true
+    pattern-either:
+      - pattern: AssistantAgent(..., human_input_mode="NEVER", ...)
+      - pattern: UserProxyAgent(..., human_input_mode="NEVER", ...)
+      - pattern: ConversableAgent(..., human_input_mode="NEVER", ...)
+
+  - id: autogen-register-function-no-arg-validation
+    message: "register_function exposes a Python callable to the agent that does not validate its arguments before sink (LLM06)."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-78"
+      owasp-llm: "LLM06"
+      confidence: LOW
+      framework: autogen
+    pattern: |
+      register_function($F, caller=$A, executor=$E, ...)
+
+  # ─────────────────────────────────────────────────────────────────────
+  # OpenHands — Python
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: openhands-permission-mode-auto
+    message: "OpenHands runtime configured with permission_mode='auto' — confirmless tool execution (LLM06)."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-250"
+      owasp-llm: "LLM06"
+      confidence: HIGH
+      framework: openhands
+      default_check: true
+    pattern-either:
+      - pattern: permission_mode = "auto"
+      - pattern: permission_mode='auto'
+      - pattern: $CFG.permission_mode = "auto"
+
+  - id: openhands-sandbox-auto-fallback
+    message: "OpenHands sandbox='auto' may fall back to host execution when no sandbox runtime is available (CWE-269)."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-269"
+      owasp-llm: "LLM06"
+      confidence: MEDIUM
+      framework: openhands
+      default_check: true
+    pattern-either:
+      - pattern: sandbox = "auto"
+      - pattern: $CFG.sandbox = "auto"
+
+  # ─────────────────────────────────────────────────────────────────────
+  # openai-agents — Python
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: openai-agents-runner-no-max-turns
+    message: "Runner.run called without max_turns — context-window attack / runaway loop surface (LLM06)."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-400"
+      owasp-llm: "LLM06"
+      confidence: LOW
+      framework: openai-agents
+    pattern: Runner.run($AGENT, $INPUT)
+    pattern-not: Runner.run($AGENT, $INPUT, max_turns=$N)
+
+  - id: openai-agents-tool-arg-to-shell
+    message: "openai-agents @function_tool argument used in shell/exec call (CWE-78, LLM06)."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-78"
+      owasp-llm: "LLM06"
+      confidence: MEDIUM
+      framework: openai-agents
+    pattern-either:
+      - pattern: |
+          @function_tool
+          def $F($ARG: str) -> $T:
+            ...
+            os.system($ARG)
+      - pattern: |
+          @function_tool
+          def $F($ARG: str) -> $T:
+            ...
+            subprocess.run($ARG, shell=True)
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Cross-framework — Tool Result Injection (A3)
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: tool-result-fed-back-to-llm-py
+    message: "Tool output appended to messages without sanitization — A3 Tool Result Injection (CWE-1427)."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: LOW
+    pattern-either:
+      - pattern: |
+          messages.append({"role": "tool", "content": $X})
+      - pattern: |
+          messages.append({"role": "user", "content": $TOOL_OUT})
+      - pattern: |
+          messages += [{"role": "tool", "content": $X}]
+
+  - id: tool-result-fed-back-to-llm-ts
+    message: "Tool output appended to messages without sanitization — A3 Tool Result Injection (CWE-1427)."
+    severity: WARNING
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: LOW
+    pattern-either:
+      - pattern: |
+          messages.push({ role: "tool", content: $X })
+      - pattern: |
+          messages.push({ role: "user", content: $TOOL_OUT })

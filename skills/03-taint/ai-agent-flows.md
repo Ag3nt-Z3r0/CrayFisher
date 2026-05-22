@@ -1,267 +1,320 @@
-# Skill 03-B: AI 에이전트 보안 흐름 분석
+# Skill 03-B: AI Agent Security Flow Analysis
 
-## 목적
-LLM·MCP·에이전트 프레임워크 코드에서 에이전트 특화 취약점을 찾는다.
-일반 taint 분석과 다른 점: **LLM의 출력 자체가 새로운 taint source가 될 수 있다.**
+## Purpose
 
----
+Find Agent-specific vulnerabilities in LLM / MCP / agent-framework code.
+Unlike generic taint, here **the LLM's own output is also a fresh taint
+source.**
 
-## 에이전트 신뢰 계층 모델
-
-에이전트에서 신뢰는 계층적이다. 아래로 갈수록 신뢰도가 낮다:
-
-```
-[1] System Prompt       ← 운영자 제어, 최고 신뢰
-[2] Developer Messages  ← 코드 내 하드코딩, 높은 신뢰
-[3] User Turn           ← 사용자 입력, 낮은 신뢰
-[4] Tool Results        ← 외부 세계, 최저 신뢰 (공격자가 제어 가능)
-```
-
-**핵심 취약점 패턴**: 낮은 신뢰 계층의 콘텐츠가 높은 신뢰 계층으로 **상승(escalation)** 할 때 발생.
+When `is_agent_target = true`, 03-B is the **primary** taint skill. 03-A
+applies only to non-agent entry points (admin HTTP, ORM, static assets).
 
 ---
 
-## 탐지해야 할 에이전트 특화 취약점 유형 (10가지)
+## Agent Trust Layer Model
 
-### [A1] 간접 프롬프트 인젝션 (Indirect Prompt Injection)
-**정의**: 공격자가 에이전트가 나중에 처리할 외부 콘텐츠(웹 페이지, 파일, 이메일, DB 레코드 등)에 지시문을 심어 에이전트의 행동을 통제.
+Trust is hierarchical. Lower in the table = less trusted:
 
-**탐지 패턴**:
+```
+[1] System Prompt       — operator-controlled, highest trust
+[2] Developer Messages  — hardcoded in code, high trust
+[3] User Turn           — user input, low trust
+[4] Tool Results        — external world, lowest trust (attacker-controllable)
+```
+
+**Core vulnerability pattern**: lower-trust content **promoted** into a
+higher-trust layer.
+
+The trust graph emitted by [`tools/agent_trust_graph.py`](../../tools/agent_trust_graph.py)
+captures this directly: every `kind: "promotion"` edge is a candidate.
+
+---
+
+## Agent-specific vuln classes (10 patterns)
+
+### [A1] Indirect Prompt Injection
+
+**Definition.** Attacker plants instructions inside external content
+(web page, file, email, DB row) that the agent will later process; those
+instructions hijack the agent.
+
+**Grep patterns:**
+
 ```bash
-# 외부 콘텐츠를 LLM에 직접 전달하는 도구 찾기
+# Tools that fetch external content and return it without wrapping
 grep -rn "wrapExternalContent\|wrapWebContent" <path> --include="*.ts" | grep "return"
-# → wrapExternalContent 없이 content를 반환하는 도구 = 후보
 grep -rn "text:.*\`.*\${" <path> --include="*.ts" | grep -v "wrapExternal\|wrapWeb"
 ```
 
-**코드에서 확인할 것**:
-- 도구가 외부 콘텐츠를 가져와 tool result로 반환하는가?
-- 반환 전에 `wrapExternalContent()` 또는 동등한 보호가 적용되는가?
-- 동일 에이전트에 위험 도구(`exec`, `file_write`)가 등록되어 있는가?
+**Read the code for:**
 
-**위험 신호**: `text: \`...\${rawContent}\`` 패턴, `return { text: externalData }` 패턴
+- Does the tool fetch external content and return it as tool result?
+- Is `wrapExternalContent()` (or equivalent) applied before return?
+- Is a dangerous tool (`exec`, `file_write`) registered in the same agent?
+
+**Red flags.** `text: \`...\${rawContent}\``; `return { text: externalData }`.
 
 ---
 
-### [A2] 저장된 프롬프트 인젝션 (Stored Prompt Injection)
-**정의**: 공격자가 오염된 콘텐츠를 DB/메모리/파일에 미리 저장 → 에이전트가 나중에 조회할 때 실행.
+### [A2] Stored Prompt Injection
 
-**탐지 패턴**:
+**Definition.** Attacker writes poisoned content into DB / memory / file;
+the agent retrieves it later and the injection runs in a higher-trust
+context.
+
+**Grep patterns:**
+
 ```bash
-# 외부 입력을 저장하는 곳 → 나중에 LLM에 전달되는 곳까지 taint 추적
 grep -rn "INSERT INTO\|\.push\|\.set\|\.store" <path> --include="*.ts" | head -30
-# 저장된 데이터를 LLM messages에 넣는 곳
 grep -rn "memory\.search\|recall\|retrieve\|getHistory\|loadContext" <path> --include="*.ts"
 ```
 
-**코드에서 확인할 것**:
-- 저장 시: LLM 요약/변환 없이 원문이 저장되는가? (`chunkMarkdown()`, 직접 INSERT 등)
-- 조회 시: `wrapExternalContent()` 없이 저장된 텍스트가 LLM 컨텍스트에 삽입되는가?
-- 저장→조회 사이에 sanitization이 있는가?
+**Read the code for:**
+
+- On write: is the input stored raw without an LLM summary / transform?
+- On read: is the stored text inserted into the LLM context without
+  `wrapExternalContent`?
+- Is there sanitization between write and read?
 
 ---
 
-### [A3] 도구 결과 인젝션 (Tool Result Injection)
-**정의**: 에이전트가 사용하는 도구(exec, web_fetch, file_read 등)의 결과가 다음 LLM 호출의 입력이 될 때, 결과에 포함된 인젝션이 실행.
+### [A3] Tool Result Injection
 
-**탐지 패턴**:
+**Definition.** A tool result (exec, web_fetch, file_read, …) is folded
+back into the next LLM turn, so injection inside the result hijacks the
+follow-up call.
+
+**Grep patterns:**
+
 ```bash
-# tool result가 messages 배열에 추가되는 방식
 grep -rn "role.*tool\|tool_result\|toolResult\|ToolResultBlock" <path> --include="*.ts"
-# tool result를 감싸는 보호 함수 존재 여부
 grep -rn "wrapToolResult\|sanitizeToolOutput\|escapeToolContent" <path> --include="*.ts"
 ```
 
-**코드에서 확인할 것**:
-- tool result가 `content: rawOutput` 형태로 그대로 messages에 추가되는가?
-- exec/shell 출력이 그대로 다음 LLM 호출에 포함되는가? (재귀적 인젝션 가능)
-- web_fetch/file_read 결과에 공격자가 제어 가능한 내용이 포함될 수 있는가?
+**Read the code for:**
+
+- Is the tool result added to `messages` as `content: rawOutput`?
+- Does shell / exec output land in the next LLM call unchanged
+  (recursive injection)?
+- Can web_fetch / file_read return attacker-controllable bytes?
 
 ---
 
-### [A4] 다중 에이전트 신뢰 경계 위반 (Multi-Agent Trust Escalation)
-**정의**: 낮은 신뢰의 서브에이전트가 높은 신뢰의 오케스트레이터에게 메시지를 보낼 때, 서브에이전트의 출력이 무조건 신뢰되면 권한 상승 발생.
+### [A4] Multi-Agent Trust Escalation
 
-**탐지 패턴**:
+**Definition.** A low-trust subagent returns output to a higher-trust
+orchestrator and the output is trusted unconditionally.
+
+**Grep patterns:**
+
 ```bash
-# 서브에이전트 결과를 오케스트레이터가 처리하는 방식
 grep -rn "subagent\|Subagent\|spawn.*agent\|runAgent\|delegateTo" <path> --include="*.ts"
 grep -rn "result.*message\|output.*inject\|agentResponse.*prompt" <path> --include="*.ts"
 ```
 
-**코드에서 확인할 것**:
-- 서브에이전트 출력이 오케스트레이터 LLM의 user/system turn에 삽입되는가?
-- 삽입 전에 서브에이전트 결과가 살균/검증되는가?
-- 서브에이전트에 외부 입력 접근 권한이 있는가?
+**Read the code for:**
 
-**위험 시나리오**: 외부 입력 처리 서브에이전트 → 조작된 결과 반환 → 오케스트레이터가 exec 실행
+- Is the subagent's output inserted into the orchestrator LLM's user /
+  system turn?
+- Is the output sanitized / schema-parsed before insertion?
+- Does the subagent have access to external input?
+
+**Hot scenario.** External-input subagent → manipulated output →
+orchestrator calls `exec`.
 
 ---
 
-### [A5] 지시문 계층 우회 (Instruction Hierarchy Bypass)
-**정의**: system prompt의 지시가 user turn이나 tool result에 삽입된 상충 지시에 의해 무력화됨.
+### [A5] Instruction Hierarchy Bypass
 
-**탐지 패턴**:
+**Definition.** System-prompt instructions are overridden by conflicting
+instructions injected via user turn or tool result.
+
+**Grep patterns:**
+
 ```bash
-# system prompt와 user turn이 조합되는 방식
 grep -rn "messages.*system\|systemPrompt\|extraSystemPrompt" <path> --include="*.ts"
 grep -rn "prependEvents\|systemLines\|buildReplyPrompt" <path> --include="*.ts"
 ```
 
-**코드에서 확인할 것**:
-- system prompt에 "외부 콘텐츠를 신뢰하지 말라"는 지시가 있는가?
-- user turn이나 tool result에서 온 콘텐츠가 `System:` 접두사를 달고 삽입되는가?
-- LLM이 두 지시 간 충돌 시 어느 쪽을 우선시하도록 설계됐는가?
+**Read the code for:**
+
+- Does the system prompt say "do not trust external content"?
+- Does user-turn or tool-result content land prefixed with `System:` ?
+- When two instructions conflict, which does the model prioritize by
+  design?
 
 ---
 
-### [A6] 메모리 오염 (Memory Poisoning)
-**정의**: 공격자가 에이전트의 장기/단기 메모리에 오염된 콘텐츠를 주입하여, 이후 세션에서 반복 실행.
+### [A6] Memory Poisoning
 
-**탐지 패턴**:
+**Definition.** Attacker writes poisoned content into the agent's long-
+or short-term memory; the agent reads it back in a later session.
+
+**Grep patterns:**
+
 ```bash
-# 메모리 쓰기: 외부 입력이 메모리로 저장되는 경로
 grep -rn "memory\.add\|memory\.store\|addMemory\|saveMemory\|promoteTo" <path> --include="*.ts"
-# 메모리 읽기: 저장된 내용이 LLM에 전달되는 경로
 grep -rn "memory\.search\|memory\.get\|loadMemory\|recallMemory" <path> --include="*.ts"
 ```
 
-**코드에서 확인할 것**:
-- 쓰기 경로: 외부 입력이 LLM 변환 없이 원문 저장되는가?
-- 읽기 경로: 저장된 내용이 `wrapExternalContent` 없이 LLM에 전달되는가?
-- 쓰기 임계값(score, recall count 등)이 실제로 달성 가능한가?
+**Read the code for:**
+
+- Write path: does external input land in memory verbatim?
+- Read path: is stored content passed to the LLM without
+  `wrapExternalContent`?
+- Are write thresholds (score, recall count, etc.) actually reachable?
 
 ---
 
-### [A7] 도구 연쇄 공격 (Tool Chain Exploitation)
-**정의**: 공격자가 하나의 도구를 통해 에이전트가 다른 위험한 도구를 연속 실행하도록 유도.
+### [A7] Tool Chain Exploitation
 
-**탐지 패턴**:
+**Definition.** Attacker uses one tool to cause the agent to invoke
+another, dangerous tool in sequence.
+
+**Grep patterns:**
+
 ```bash
-# 어떤 도구들이 같은 에이전트/프로파일에 등록되어 있는가
 grep -rn "profiles.*coding\|tool.*register\|toolCatalog\|allowedTools" <path> --include="*.ts"
-# 도구 실행 순서 제어 여부
 grep -rn "tool.*sequence\|toolChain\|autoApprove\|askBeforeRun" <path> --include="*.ts"
 ```
 
-**코드에서 확인할 것**:
-- `exec`/`file_write`와 `web_fetch`/`memory_search` 같은 읽기 도구가 동일 세션에 등록되어 있는가?
-- 도구 A의 출력이 도구 B의 인수로 직접 전달되는 자동화 패턴이 있는가?
-- `ask=off`/`autoApprove=true` 설정이 기본값인가?
+**Read the code for:**
+
+- Are `exec` / `file_write` registered in the same session as
+  `web_fetch` / `memory_search`?
+- Does tool A's output flow directly into tool B's argument
+  automatically?
+- Is `ask=off` / `autoApprove=true` the default?
 
 ---
 
-### [A8] 에이전트 목표 탈취 (Goal Hijacking)
-**정의**: 주입된 지시가 에이전트의 원래 목표를 완전히 교체하여, 공격자가 원하는 작업을 대신 수행.
+### [A8] Goal Hijacking
 
-**탐지 패턴**:
+**Definition.** An injected instruction replaces the agent's original
+objective, so the agent does the attacker's work.
+
+**Grep patterns:**
+
 ```bash
-# 에이전트 목표/태스크가 외부 입력에서 오는 경우
 grep -rn "goal\|objective\|task.*user\|userGoal" <path> --include="*.ts"
 grep -rn "run_task\|taskBody\|agentTask" <path> --include="*.ts"
 ```
 
-**코드에서 확인할 것**:
-- 에이전트의 최초 task/goal이 외부 입력(webhook, API 등)에서 설정되는가?
-- task 내용이 LLM user/system turn에 직접 삽입되는가?
-- task 내용에 대한 content validation이 있는가?
+**Read the code for:**
+
+- Is the agent's initial task / goal set from external input (webhook,
+  API)?
+- Is the task body directly inserted into a user / system turn?
+- Is there content validation on the task body?
 
 ---
 
-### [A9] 반성/평가자 에이전트 조작 (Critic/Evaluator Manipulation)
-**정의**: 다중 에이전트 시스템에서 평가자(critic) 에이전트가 주입된 콘텐츠를 평가할 때, 평가 결과 자체가 오염됨.
+### [A9] Critic / Evaluator Manipulation
 
-**탐지 패턴**:
+**Definition.** In a multi-agent system, the evaluator agent's verdict
+is compromised by injected content in what it's asked to evaluate.
+
+**Grep patterns:**
+
 ```bash
-# critic/judge/evaluator 패턴
 grep -rn "critic\|judge\|evaluate\|review.*agent\|verif.*agent" <path> --include="*.ts" -i
 ```
 
-**코드에서 확인할 것**:
-- 평가자 에이전트가 평가 대상 콘텐츠를 직접 user turn에 받는가?
-- 평가 결과가 후속 실행 결정에 자동으로 사용되는가?
-- 평가자 에이전트에도 위험 도구가 등록되어 있는가?
+**Read the code for:**
+
+- Does the evaluator receive the candidate content directly in user turn?
+- Is the evaluator's verdict used to drive a follow-up action
+  automatically?
+- Does the evaluator have dangerous tools registered too?
 
 ---
 
-### [A10] 컨텍스트 창 조작 (Context Window Manipulation)
-**정의**: 공격자가 대량의 무해한 콘텐츠를 보내 초기 system prompt를 컨텍스트 창 밖으로 밀어내거나, 특정 패턴으로 초기 지시를 희석.
+### [A10] Context Window Manipulation
 
-**탐지 패턴**:
+**Definition.** Attacker sends large benign content to push the leading
+system prompt out of the model's effective context, or dilutes it with
+specific patterns.
+
+**Grep patterns:**
+
 ```bash
-# 컨텍스트 크기 제한 여부
 grep -rn "maxTokens\|contextLimit\|truncate\|trimContext\|maxContext" <path> --include="*.ts"
-# 긴 외부 콘텐츠를 무제한 삽입하는 경로
 grep -rn "\.join\|concat.*content\|append.*history" <path> --include="*.ts"
 ```
 
-**코드에서 확인할 것**:
-- 외부 콘텐츠 길이에 제한이 없는가?
-- 긴 입력이 시스템 지시보다 앞에 삽입되는가?
-- 컨텍스트 압축/트런케이션이 system prompt를 잘라낼 수 있는가?
+**Read the code for:**
+
+- Is there a length cap on external content?
+- Does a long input land *before* the system prompt?
+- Can context truncation / compression drop the system prompt?
 
 ---
 
-## 탐지 절차
+## Detection procedure
 
-### Step 1 — 에이전트 아키텍처 파악
-
-```bash
-python3 tools/detect_stack.py <local_path>
-```
-
-확인:
-- LLM API 호출 위치 (`openai`, `anthropic`, `messages.create`)
-- 도구 등록 방식 (`toolCatalog`, `allowedTools`, `tool-catalog.ts`)
-- 에이전트 간 통신 패턴 (subagent spawn, message passing)
-- 메모리 시스템 존재 여부
-
-### Step 2 — 신뢰 경계 지도 작성
-
-코드를 읽어 다음 질문에 답한다:
-
-```
-Q1: 외부 입력(HTTP, 채팅, 파일, 음성 등)이 어디서 들어오는가?
-Q2: 그 입력이 LLM messages에 삽입되기 전에 어떤 변환을 거치는가?
-Q3: 삽입된 위치는 system turn인가 user turn인가 tool result인가?
-Q4: 동일 에이전트 세션에 위험 도구(exec, file_write)가 있는가?
-Q5: 인간 승인 게이트(ask=always 등)가 있는가?
-```
-
-### Step 3 — 보호 함수 일관성 검사
-
-올바른 보호 패턴이 한 곳에는 적용되고 다른 곳에는 빠진 경우 → 즉시 후보 등록.
+### Step 1 — Agent architecture
 
 ```bash
-# wrapExternalContent 적용 현황
+python tools/detect_stack.py <local_path>
+python tools/architecture_map.py <local_path>
+python tools/agent_trust_graph.py <local_path>
+```
+
+Confirm:
+
+- LLM call sites (`llm_call_sites[]`)
+- Tool registry (`tool_registry[]`)
+- Sub-agent spawners (`sub_agent_spawners[]`)
+- Memory stores (`memory_stores[]`)
+- Sandbox / approval (`sandbox_sites[]`, `approval_gates[]`)
+
+### Step 2 — Trust-boundary map
+
+Use the trust-graph output to answer:
+
+```
+Q1: Where does external input (HTTP, chat, file, voice) enter?
+Q2: What transforms does it pass before landing in LLM messages?
+Q3: Which trust layer does it land in (system / user / tool)?
+Q4: Are dangerous tools (exec, file_write) registered in the same session?
+Q5: Is a human-approval gate present (ask=always, etc.)?
+```
+
+Every `kind: "promotion"` edge in the graph is a candidate.
+
+### Step 3 — Wrapper / sanitizer consistency
+
+When the correct protection exists in some places but not others —
+register a candidate immediately.
+
+```bash
 grep -rn "wrapExternalContent\|wrapWebContent" <path> --include="*.ts"
-# 미적용 도구와 적용 도구를 비교
-```
-
-```bash
-# sanitizeInboundSystemTags 적용 현황
 grep -rn "sanitizeInboundSystemTags" <path> --include="*.ts"
-# 적용된 경로 vs 미적용 경로 목록화
 ```
 
-### Step 4 — 기본값(Default) 분석
+Compare: which call sites have it, which do not.
 
-기본값이 안전한지 확인:
+### Step 4 — Default-value analysis
+
+Cross-check against [`../00-meta/agent-default-checks.md`](../00-meta/agent-default-checks.md):
 
 ```bash
 grep -rn "DEFAULT_ASK\|DEFAULT_SECURITY\|groupPolicy\|toolsAllow\|dmPolicy" <path> --include="*.ts"
 grep -rn "'open'\|'off'\|'full'\|'allowlist'" <path> --include="*.ts" | grep -i "default\|=\s*['\"]"
 ```
 
-위험 기본값 패턴:
-- `DEFAULT_ASK = 'off'` → exec 자동 실행
-- `groupPolicy = 'open'` → 모든 멤버 접근 허용
-- `toolsAllow = undefined` → 모든 도구 허용
-- `sandbox = 'auto'` + `sandboxAvailable = false` → 호스트 실행
+Dangerous default patterns:
+
+- `DEFAULT_ASK = 'off'` → tools run without confirmation
+- `groupPolicy = 'open'` → all members granted
+- `toolsAllow = undefined` → every registered tool allowed
+- `sandbox = 'auto'` + `sandboxAvailable = false` → host execution
+- `permission_mode = 'auto'` (OpenHands / Claude Agent SDK)
+- `human_input_mode = 'NEVER'` (AutoGen)
 
 ---
 
-## 출력 형식
+## Output
 
 ```json
 {
@@ -269,14 +322,14 @@ grep -rn "'open'\|'off'\|'full'\|'allowlist'" <path> --include="*.ts" | grep -i 
     "llm_calls": ["<file>:<line>"],
     "tool_registry": "<file>:<line>",
     "memory_system": "<file> or null",
-    "multi_agent": true/false,
+    "multi_agent": true,
     "trust_layers_identified": ["system_prompt", "user_turn", "tool_result"]
   },
   "findings": [
     {
       "id": "FIND-XXX",
       "vuln_class": "A1|A2|A3|A4|A5|A6|A7|A8|A9|A10",
-      "vuln_type": "PROMPT_INJECTION|STORED_INJECTION|TOOL_ABUSE|...",
+      "vuln_type": "PROMPT_INJECTION|TOOL_RESULT_INJECTION|MEMORY_POISONING|MULTI_AGENT_ESCALATION|...",
       "title": "...",
       "trust_escalation": "tool_result → user_turn",
       "source": "<file>:<line> → \"code\"",
@@ -289,3 +342,34 @@ grep -rn "'open'\|'off'\|'full'\|'allowlist'" <path> --include="*.ts" | grep -i 
   ]
 }
 ```
+
+---
+
+## A1–A10 → Semgrep rule → policy mapping
+
+When a candidate matches one of A1–A10, the recon agent stamps it with
+the vuln-type below, the defender consults the named policy file, and
+Phase 2 Semgrep loads the listed rule IDs first.
+
+| Pattern | vuln_type | Primary policy | Supporting Semgrep rules |
+|---|---|---|---|
+| **A1** Indirect Prompt Injection | `PROMPT_INJECTION` | [policies/prompt-injection.md](../04-validate/policies/prompt-injection.md) | `mcp-tool-result-returned-raw`, `langchain-system-prompt-concat-input` |
+| **A2** Stored Prompt Injection | `PROMPT_INJECTION` | [policies/prompt-injection.md](../04-validate/policies/prompt-injection.md) | `langchain-memory-write-untrusted` |
+| **A3** Tool Result Injection | `TOOL_RESULT_INJECTION` | [policies/tool-result-injection.md](../04-validate/policies/tool-result-injection.md) | `tool-result-fed-back-to-llm-py`, `tool-result-fed-back-to-llm-ts`, `mcp-tool-result-returned-raw` |
+| **A4** Multi-Agent Trust Escalation | `MULTI_AGENT_ESCALATION` | [policies/agent-authorization.md](../04-validate/policies/agent-authorization.md) | `subagent-output-into-orchestrator-prompt` |
+| **A5** Instruction Hierarchy Bypass | `PROMPT_INJECTION` | [policies/prompt-injection.md](../04-validate/policies/prompt-injection.md) | `system-message-fstring-py`, `system-message-fstring-ts`, `tool-output-into-system-py`, `dev-message-from-request-py`, `trust-label-string-write-ts` |
+| **A6** Memory Poisoning | `MEMORY_POISONING` | [policies/prompt-injection.md](../04-validate/policies/prompt-injection.md) | `langchain-memory-write-untrusted` |
+| **A7** Tool Chain Exploitation | `EXCESSIVE_AGENCY` | [policies/excessive-agency.md](../04-validate/policies/excessive-agency.md) | `default-ask-off-py`, `default-ask-off-ts`, `auto-approve-true-py`, `auto-approve-true-ts`, `tools-allow-undefined-ts`, `tools-allow-none-py`, `langchain-tool-from-unvalidated-input`, `langchain-tool-fs-no-sandbox`, `openai-agents-tool-arg-to-shell` |
+| **A8** Goal Hijacking | `PROMPT_INJECTION` | [policies/prompt-injection.md](../04-validate/policies/prompt-injection.md) | `system-message-fstring-py`, `system-message-fstring-ts` |
+| **A9** Critic / Evaluator Manipulation | `MULTI_AGENT_ESCALATION` | [policies/agent-authorization.md](../04-validate/policies/agent-authorization.md) | `subagent-output-into-orchestrator-prompt` |
+| **A10** Context Window Manipulation | `CONTEXT_WINDOW_ATTACK` | [policies/context-window-attacks.md](../04-validate/policies/context-window-attacks.md) | `langchain-agent-executor-no-max-iterations`, `openai-agents-runner-no-max-turns` |
+
+Additional cross-cutting policies that apply regardless of A-class:
+
+| When to consult | Policy |
+|---|---|
+| Tool description / name / schema sourced from untrusted | [policies/mcp-tool-poisoning.md](../04-validate/policies/mcp-tool-poisoning.md) |
+| Scope / authorization model in play (`operator.admin`, …) | [policies/agent-authorization.md](../04-validate/policies/agent-authorization.md) |
+| Product claims sandboxing | [policies/sandbox-escape.md](../04-validate/policies/sandbox-escape.md) |
+| Plugin / extension loader present | [policies/supply-chain-plugin.md](../04-validate/policies/supply-chain-plugin.md) |
+| Adjacent to a previously-patched CVE / GHSA | [policies/incomplete-fix.md](../04-validate/policies/incomplete-fix.md) |

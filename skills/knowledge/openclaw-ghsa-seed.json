@@ -1,0 +1,728 @@
+{
+  "_schema": "crayfisher-ghsa-seed v1",
+  "_note": "Distilled subset of OpenClaw GHSA corpus. Used by ghsa_lookup.py and incomplete_fix_scan.py. Not a live feed.",
+  "aggregates": {
+    "total": 469,
+    "by_severity": {
+      "high": 151,
+      "medium": 254,
+      "low": 51,
+      "critical": 13
+    },
+    "by_owasp_llm": {
+      "LLM06:Excessive Agency": 200,
+      "LLM01:Prompt Injection": 120,
+      "LLM07:Insecure Plugin Design": 48,
+      "LLM05:Supply Chain": 27,
+      "LLM08:Excessive Agency / Env": 7,
+      "LLM-unclassified": 40,
+      "LLM08:Vector & Auth": 1,
+      "LLM02:Insecure Output Handling": 24,
+      "LLM03:Sensitive Info Disclosure": 2
+    },
+    "top_cwe": {
+      "CWE-863": 87,
+      "CWE-78": 33,
+      "CWE-22": 32,
+      "CWE-59": 20,
+      "CWE-284": 20,
+      "CWE-285": 20,
+      "CWE-269": 19,
+      "CWE-400": 19,
+      "CWE-184": 18,
+      "CWE-918": 17,
+      "CWE-367": 16,
+      "CWE-639": 11,
+      "CWE-306": 11,
+      "CWE-200": 10,
+      "CWE-15": 10
+    },
+    "by_component": {
+      "prompt-injection-like": 154,
+      "node-pairing-scope": 140,
+      "approval-bypass": 137,
+      "voice-media": 121,
+      "channel-allowlist": 114,
+      "sandbox": 72,
+      "ssrf": 54,
+      "webhook-replay": 54,
+      "path-traversal": 48,
+      "other": 25,
+      "exec-env-injection": 24,
+      "gateway-control": 14,
+      "crypto-timing": 12,
+      "plugin-supply-chain": 8
+    },
+    "snapshot_date": "2026-04-11",
+    "source_repo": "github.com/openclaw/openclaw",
+    "source_corpus": "Agent-Zero-DB/learning/week1/ghsa-audit/openclaw-ghsa.json"
+  },
+  "incomplete_fix_patterns": {
+    "A_re_emergence": [
+      "GHSA-7xr2-q9vf-x4r5",
+      "GHSA-vfw7-6rhc-6xxg",
+      "GHSA-3298-56p6-rpw2",
+      "GHSA-2w79-r9g8-wmcr",
+      "GHSA-w6m8-cqvj-pg5v"
+    ],
+    "B_adjacent_miss": [
+      "GHSA-5fc7-f62m-8983",
+      "GHSA-7437-7hg8-frrw",
+      "GHSA-cm8v-2vh9-cxf3",
+      "GHSA-m866-6qv5-p2fg",
+      "GHSA-8j9w-9pm5-pv8m"
+    ],
+    "C_deeper_trigger": [
+      "GHSA-2w79-r9g8-wmcr",
+      "GHSA-w6m8-cqvj-pg5v"
+    ],
+    "D_bypass_variant": [
+      "GHSA-rhfg-j8jq-7v2h",
+      "GHSA-vfw7-6rhc-6xxg"
+    ],
+    "E_workspace_multivector": [
+      "GHSA-5fc7-f62m-8983"
+    ]
+  },
+  "env_denylist_known_bypass_seeds": [
+    "HGRCPATH",
+    "CARGO_BUILD_RUSTC_WRAPPER",
+    "PIP_INDEX_URL",
+    "UV_INDEX_URL",
+    "MAKEFLAGS",
+    "GIT_DIR",
+    "PYTHONWARNINGS",
+    "NODE_OPTIONS",
+    "BUNDLE_PATH",
+    "GOPROXY",
+    "RUBYOPT",
+    "RUSTUP_HOME",
+    "GEM_PATH",
+    "npm_config_userconfig"
+  ],
+  "critical_subclass_breakdown": {
+    "scope_self_escalation": 9,
+    "sandbox_escape": 2,
+    "approval_bypass": 1,
+    "inbound_allowlist_bypass": 1
+  },
+  "advisories": [
+    {
+      "id": "GHSA-gv46-4xfq-jv58",
+      "cve": null,
+      "sev": "critical",
+      "sum": "Remote Code Execution via Node Invoke Approval Bypass in Gateway",
+      "cwes": [
+        "CWE-20",
+        "CWE-441",
+        "CWE-863"
+      ],
+      "cmp": [
+        "channel-allowlist",
+        "node-pairing-scope",
+        "exec-env-injection",
+        "prompt-injection-like",
+        "webhook-replay",
+        "approval-bypass"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-gv46-4xfq-jv58",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-4rj2-gpmh-qq5x",
+      "cve": null,
+      "sev": "critical",
+      "sum": "Inbound allowlist policy bypass in voice-call extension (empty caller ID + suffix matching)",
+      "cwes": [
+        "CWE-287"
+      ],
+      "cmp": [
+        "channel-allowlist",
+        "node-pairing-scope",
+        "voice-media",
+        "approval-bypass"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-4rj2-gpmh-qq5x",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-qrq5-wjgg-rvqw",
+      "cve": null,
+      "sev": "critical",
+      "sum": "Path Traversal in Plugin Installation",
+      "cwes": [
+        "CWE-22"
+      ],
+      "cmp": [
+        "node-pairing-scope",
+        "path-traversal",
+        "plugin-supply-chain"
+      ],
+      "llm": "LLM05:Supply Chain",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-qrq5-wjgg-rvqw",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-4jpw-hj22-2xmc",
+      "cve": null,
+      "sev": "critical",
+      "sum": "Pairing-scoped device tokens could mint `operator.admin` and reach node RCE",
+      "cwes": [
+        "CWE-269"
+      ],
+      "cmp": [
+        "node-pairing-scope",
+        "approval-bypass"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-4jpw-hj22-2xmc",
+      "pub": "2026-03-12"
+    },
+    {
+      "id": "GHSA-rqpp-rjj8-7wv8",
+      "cve": null,
+      "sev": "critical",
+      "sum": "WebSocket shared-auth connections could self-declare elevated scopes",
+      "cwes": [
+        "CWE-269",
+        "CWE-862"
+      ],
+      "cmp": [
+        "node-pairing-scope",
+        "prompt-injection-like",
+        "crypto-timing",
+        "gateway-control"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-rqpp-rjj8-7wv8",
+      "pub": "2026-03-13"
+    },
+    {
+      "id": "GHSA-hf68-49fm-59cq",
+      "cve": null,
+      "sev": "critical",
+      "sum": "Gateway device.pair.approve Lets operator.pairing Escalate a New Device into operator.admin, reaching Node RCE.",
+      "cwes": [
+        "CWE-269"
+      ],
+      "cmp": [
+        "node-pairing-scope"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-hf68-49fm-59cq",
+      "pub": "2026-03-24"
+    },
+    {
+      "id": "GHSA-9hjh-fr4f-gxc4",
+      "cve": null,
+      "sev": "critical",
+      "sum": "Gateway Backend Reconnect lets Non-Admin Operator Scopes Self-Claim operator.admin",
+      "cwes": [
+        "CWE-269",
+        "CWE-863"
+      ],
+      "cmp": [
+        "node-pairing-scope"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-9hjh-fr4f-gxc4",
+      "pub": "2026-03-26"
+    },
+    {
+      "id": "GHSA-fqw4-mph7-2vr8",
+      "cve": null,
+      "sev": "critical",
+      "sum": "Gateway local shared-auth reconnect silently widens paired device scope from operator.read to operator.admin and reach node RCE",
+      "cwes": [
+        "CWE-863"
+      ],
+      "cmp": [
+        "node-pairing-scope",
+        "approval-bypass"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-fqw4-mph7-2vr8",
+      "pub": "2026-03-26"
+    },
+    {
+      "id": "GHSA-hc5h-pmr3-3497",
+      "cve": null,
+      "sev": "critical",
+      "sum": "/pair approve command path omitted caller scope subsetting and reopened device pairing escalation",
+      "cwes": [],
+      "cmp": [
+        "node-pairing-scope",
+        "approval-bypass"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-hc5h-pmr3-3497",
+      "pub": "2026-03-29"
+    },
+    {
+      "id": "GHSA-8rh7-6779-cjqq",
+      "cve": null,
+      "sev": "critical",
+      "sum": "CWD `.env` environment variable injection bypasses host-env policy and allows config takeover",
+      "cwes": [
+        "CWE-426"
+      ],
+      "cmp": [
+        "prompt-injection-like"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-8rh7-6779-cjqq",
+      "pub": "2026-03-29"
+    },
+    {
+      "id": "GHSA-j7p2-qcwm-94v4",
+      "cve": null,
+      "sev": "critical",
+      "sum": "Incomplete host env sanitization blocklist allows supply-chain redirection via package-manager env overrides",
+      "cwes": [
+        "CWE-183"
+      ],
+      "cmp": [
+        "exec-env-injection",
+        "ssrf"
+      ],
+      "llm": "LLM07:Insecure Plugin Design",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-j7p2-qcwm-94v4",
+      "pub": "2026-03-29"
+    },
+    {
+      "id": "GHSA-9p3r-hh9g-5cmg",
+      "cve": null,
+      "sev": "critical",
+      "sum": "Sandbox escape via TOCTOU race in remote FS bridge readFile",
+      "cwes": [],
+      "cmp": [
+        "sandbox",
+        "path-traversal"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-9p3r-hh9g-5cmg",
+      "pub": "2026-03-31"
+    },
+    {
+      "id": "GHSA-g5cg-8x5w-7jpm",
+      "cve": null,
+      "sev": "critical",
+      "sum": "Heartbeat context inheritance bypasses sandbox via senderIsOwner escalation",
+      "cwes": [],
+      "cmp": [
+        "sandbox"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-g5cg-8x5w-7jpm",
+      "pub": "2026-03-31"
+    },
+    {
+      "id": "GHSA-g8p2-7wf7-98mq",
+      "cve": null,
+      "sev": "high",
+      "sum": "1-Click RCE via Authentication Token Exfiltration From gatewayUrl",
+      "cwes": [
+        "CWE-200"
+      ],
+      "cmp": [
+        "sandbox",
+        "gateway-control"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-g8p2-7wf7-98mq",
+      "pub": "2026-01-31"
+    },
+    {
+      "id": "GHSA-g55j-c2v4-pjcg",
+      "cve": "CVE-2026-25593",
+      "sev": "high",
+      "sum": "Unauthenticated Local RCE via WebSocket config.apply",
+      "cwes": [
+        "CWE-20",
+        "CWE-78",
+        "CWE-306"
+      ],
+      "cmp": [
+        "prompt-injection-like",
+        "voice-media"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-g55j-c2v4-pjcg",
+      "pub": "2026-02-04"
+    },
+    {
+      "id": "GHSA-943q-mwmv-hhvh",
+      "cve": null,
+      "sev": "high",
+      "sum": "OC-02: Gateway /tools/invoke tool escalation + ACP permission auto-approval",
+      "cwes": [
+        "CWE-78"
+      ],
+      "cmp": [
+        "ssrf",
+        "prompt-injection-like",
+        "voice-media",
+        "approval-bypass"
+      ],
+      "llm": "LLM07:Insecure Plugin Design",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-943q-mwmv-hhvh",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-56f2-hvwg-5743",
+      "cve": null,
+      "sev": "high",
+      "sum": "SSRF in Image Tool Remote Fetch",
+      "cwes": [
+        "CWE-918"
+      ],
+      "cmp": [
+        "ssrf",
+        "prompt-injection-like",
+        "voice-media",
+        "approval-bypass"
+      ],
+      "llm": "LLM07:Insecure Plugin Design",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-56f2-hvwg-5743",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-64qx-vpxx-mvqf",
+      "cve": null,
+      "sev": "high",
+      "sum": "Arbitrary transcript path file write via gateway sessionFile",
+      "cwes": [
+        "CWE-23",
+        "CWE-73",
+        "CWE-78",
+        "CWE-284"
+      ],
+      "cmp": [
+        "prompt-injection-like",
+        "path-traversal"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-64qx-vpxx-mvqf",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-mv9j-6xhh-g383",
+      "cve": null,
+      "sev": "high",
+      "sum": "Unauthenticated Nostr profile HTTP endpoints allow remote profile/config tampering",
+      "cwes": [
+        "CWE-285",
+        "CWE-306"
+      ],
+      "cmp": [
+        "node-pairing-scope",
+        "plugin-supply-chain",
+        "approval-bypass"
+      ],
+      "llm": "LLM05:Supply Chain",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-mv9j-6xhh-g383",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-3hcm-ggvf-rch5",
+      "cve": null,
+      "sev": "high",
+      "sum": "Exec allowlist bypass via command substitution/backticks inside double quotes",
+      "cwes": [
+        "CWE-78"
+      ],
+      "cmp": [
+        "channel-allowlist",
+        "approval-bypass"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-3hcm-ggvf-rch5",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-fhvm-j76f-qmjv",
+      "cve": null,
+      "sev": "high",
+      "sum": "Potential access-group authorization bypass if channel type lookup fails",
+      "cwes": [
+        "CWE-285"
+      ],
+      "cmp": [
+        "channel-allowlist",
+        "webhook-replay"
+      ],
+      "llm": "LLM02:Insecure Output Handling",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-fhvm-j76f-qmjv",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-r5h9-vjqc-hq3r",
+      "cve": null,
+      "sev": "high",
+      "sum": "Nextcloud Talk allowlist bypass via actor.name display name spoofing",
+      "cwes": [],
+      "cmp": [
+        "channel-allowlist",
+        "prompt-injection-like",
+        "webhook-replay"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-r5h9-vjqc-hq3r",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-mqpw-46fh-299h",
+      "cve": null,
+      "sev": "high",
+      "sum": "Authorization bypass: `operator.write` can resolve exec approvals via `chat.send` -> `/approve`",
+      "cwes": [
+        "CWE-269",
+        "CWE-863"
+      ],
+      "cmp": [
+        "node-pairing-scope",
+        "prompt-injection-like",
+        "gateway-control",
+        "approval-bypass"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-mqpw-46fh-299h",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-rv39-79c4-7459",
+      "cve": null,
+      "sev": "high",
+      "sum": "Gateway connect could skip device identity checks when auth.token was present but not yet validated",
+      "cwes": [
+        "CWE-306"
+      ],
+      "cmp": [
+        "node-pairing-scope",
+        "prompt-injection-like",
+        "crypto-timing",
+        "approval-bypass"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-rv39-79c4-7459",
+      "pub": "2026-02-14"
+    },
+    {
+      "id": "GHSA-jqpq-mgvm-f9r6",
+      "cve": null,
+      "sev": "high",
+      "sum": "Command hijacking via unsafe PATH handling (bootstrapping + node-host PATH overrides)",
+      "cwes": [
+        "CWE-78",
+        "CWE-427",
+        "CWE-807"
+      ],
+      "cmp": [
+        "channel-allowlist",
+        "node-pairing-scope",
+        "exec-env-injection",
+        "prompt-injection-like",
+        "approval-bypass"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-jqpq-mgvm-f9r6",
+      "pub": "2026-02-15"
+    },
+    {
+      "id": "GHSA-4564-pvr2-qq4h",
+      "cve": "CVE-2026-27487",
+      "sev": "high",
+      "sum": "OC-28: Prevent shell injection in macOS keychain credential write",
+      "cwes": [
+        "CWE-78"
+      ],
+      "cmp": [
+        "prompt-injection-like",
+        "crypto-timing"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-4564-pvr2-qq4h",
+      "pub": "2026-02-16"
+    },
+    {
+      "id": "GHSA-8j9w-9pm5-pv8m",
+      "cve": null,
+      "sev": "medium",
+      "sum": "DUPLICATE of GHSA-3c6h-g97w-fg78: safeBins denied flags can be bypassed via GNU long-option abbreviations",
+      "cwes": [
+        "CWE-184"
+      ],
+      "cmp": [
+        "channel-allowlist",
+        "prompt-injection-like",
+        "voice-media",
+        "approval-bypass"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-8j9w-9pm5-pv8m",
+      "pub": "2026-02-24"
+    },
+    {
+      "id": "GHSA-7xr2-q9vf-x4r5",
+      "cve": null,
+      "sev": "high",
+      "sum": "Incomplete Fix for CVE-2026-32013: Symlink Traversal via IDENTITY.md appendFile in agents.create/update",
+      "cwes": [
+        "CWE-61"
+      ],
+      "cmp": [
+        "sandbox",
+        "path-traversal"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-7xr2-q9vf-x4r5",
+      "pub": "2026-03-24"
+    },
+    {
+      "id": "GHSA-rhfg-j8jq-7v2h",
+      "cve": null,
+      "sev": "high",
+      "sum": "SSRF via Unguarded Configured Base URLs in Multiple Channel Extensions (Incomplete Fix for CVE-2026-28476)",
+      "cwes": [
+        "CWE-918"
+      ],
+      "cmp": [
+        "ssrf"
+      ],
+      "llm": "LLM07:Insecure Plugin Design",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-rhfg-j8jq-7v2h",
+      "pub": "2026-03-26"
+    },
+    {
+      "id": "GHSA-w6m8-cqvj-pg5v",
+      "cve": null,
+      "sev": "medium",
+      "sum": "Incomplete Fix for CVE-2026-32011: Feishu Webhook Pre-Auth Body Parsing DoS (Slow-Body / Slowloris Variant)",
+      "cwes": [
+        "CWE-400"
+      ],
+      "cmp": [
+        "webhook-replay",
+        "approval-bypass"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-w6m8-cqvj-pg5v",
+      "pub": "2026-03-27"
+    },
+    {
+      "id": "GHSA-3298-56p6-rpw2",
+      "cve": null,
+      "sev": "medium",
+      "sum": "Incomplete Fix for CVE-2026-27486: Unvalidated SIGKILL in `!stop` Chat Command via `shell-utils.ts`",
+      "cwes": [
+        "CWE-404"
+      ],
+      "cmp": [
+        "voice-media",
+        "approval-bypass"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-3298-56p6-rpw2",
+      "pub": "2026-03-27"
+    },
+    {
+      "id": "GHSA-m3mh-3mpg-37hw",
+      "cve": null,
+      "sev": "high",
+      "sum": "openclaw Arbitrary Malicious Code Execution Vulnerability",
+      "cwes": [],
+      "cmp": [
+        "prompt-injection-like",
+        "plugin-supply-chain"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-m3mh-3mpg-37hw",
+      "pub": "2026-03-27"
+    },
+    {
+      "id": "GHSA-2w79-r9g8-wmcr",
+      "cve": null,
+      "sev": "medium",
+      "sum": "Incomplete fix for CVE-2026-32062: voice-call still parses large WebSocket frames before start validation",
+      "cwes": [
+        "CWE-400",
+        "CWE-770"
+      ],
+      "cmp": [
+        "voice-media"
+      ],
+      "llm": "LLM-unclassified",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-2w79-r9g8-wmcr",
+      "pub": "2026-03-31"
+    },
+    {
+      "id": "GHSA-vfw7-6rhc-6xxg",
+      "cve": null,
+      "sev": "high",
+      "sum": "Incomplete Fix for CVE-2026-4039: CLI Backend Environment Variable Injection via Workspace Config",
+      "cwes": [
+        "CWE-426"
+      ],
+      "cmp": [
+        "prompt-injection-like"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-vfw7-6rhc-6xxg",
+      "pub": "2026-03-31"
+    },
+    {
+      "id": "GHSA-5fc7-f62m-8983",
+      "cve": null,
+      "sev": "medium",
+      "sum": "Feishu docx upload_file/upload_image Bypasses Workspace-Only Filesystem Policy (GHSA-qf48-qfv4-jjm9 Incomplete Fix)",
+      "cwes": [
+        "CWE-732"
+      ],
+      "cmp": [
+        "node-pairing-scope",
+        "path-traversal"
+      ],
+      "llm": "LLM06:Excessive Agency",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-5fc7-f62m-8983",
+      "pub": "2026-04-08"
+    },
+    {
+      "id": "GHSA-7437-7hg8-frrw",
+      "cve": null,
+      "sev": "high",
+      "sum": "HGRCPATH, CARGO_BUILD_RUSTC_WRAPPER, RUSTC_WRAPPER, and MAKEFLAGS missing from exec env denylist — RCE via build tool env injection (GHSA-cm8v-2vh9-cxf3 class)",
+      "cwes": [
+        "CWE-78",
+        "CWE-184"
+      ],
+      "cmp": [
+        "node-pairing-scope",
+        "exec-env-injection",
+        "prompt-injection-like"
+      ],
+      "llm": "LLM01:Prompt Injection",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-7437-7hg8-frrw",
+      "pub": "2026-04-08"
+    },
+    {
+      "id": "GHSA-cm8v-2vh9-cxf3",
+      "cve": null,
+      "sev": "high",
+      "sum": "GIT_DIR and related git plumbing env vars missing from exec env denylist (GHSA-m866-6qv5-p2fg variant)",
+      "cwes": [
+        "CWE-78",
+        "CWE-184"
+      ],
+      "cmp": [
+        "node-pairing-scope",
+        "exec-env-injection",
+        "ssrf"
+      ],
+      "llm": "LLM07:Insecure Plugin Design",
+      "url": "https://github.com/openclaw/openclaw/security/advisories/GHSA-cm8v-2vh9-cxf3",
+      "pub": "2026-04-08"
+    }
+  ]
+}

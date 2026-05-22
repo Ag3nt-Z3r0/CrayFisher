@@ -3,55 +3,66 @@
 
   <reportable>
     <condition id="unauth-reachable">
-      인증 없이 접근 가능한 엔드포인트에서 발생한다.
-      확인: 미들웨어/guard 체인을 코드로 읽어 인증 없이 도달 가능함을 확인.
+      The issue occurs on an endpoint reachable without authentication.
+      Verify: read the middleware/guard chain and confirm the path is
+      reachable without auth.
     </condition>
     <condition id="single-request">
-      단일 요청 또는 극소수 요청으로 서비스 전체에 영향을 줄 수 있다.
-      확인: 입력 크기 vs 처리 복잡도를 코드로 확인 (O(n²) 이상).
+      A single or very small number of requests can impact the entire
+      service.
+      Verify: read the code to compare input size against processing
+      complexity (O(n²) or worse).
     </condition>
     <condition id="redos-proven">
-      사용자 입력으로 생성된 정규식에 catastrophic backtracking 구조가 있다.
-      확인: 정규식 패턴을 코드에서 읽고, (a+)+ / (a|a)+ / (\w+)+ 류 중첩 수량자가
-      사용자 입력으로 구성됨을 확인. "사용자 입력이 regex에 들어간다"는 불충분.
+      A regex constructed with user input contains catastrophic-backtracking
+      structure.
+      Verify: read the regex pattern in code and confirm a nested
+      quantifier such as (a+)+ / (a|a)+ / (\w+)+ is built from user input.
+      "User input goes into a regex" is not sufficient.
     </condition>
     <condition id="unbounded-alloc">
-      사용자 입력 값이 그대로 메모리 할당 크기 또는 루프 횟수가 된다.
-      확인: Buffer.alloc(userInput), new Array(userInput) 등 직접 확인.
-      상한 검사(if n > MAX) 없음을 해당 함수 전체를 읽어 확인.
+      A user input value is used directly as a memory-allocation size or
+      a loop count.
+      Verify: inspect calls like Buffer.alloc(userInput) or
+      new Array(userInput) directly. Read the whole function and confirm
+      no upper-bound check (if n > MAX) exists.
     </condition>
     <condition id="bomb">
-      Zip/XML Bomb: 압축 해제 또는 엔티티 확장 크기 제한이 코드에 없다.
-      확인: extractall() / fromstring() 전후 크기 제한 코드 없음을 확인.
+      Zip/XML bomb: no code limits decompression or entity-expansion size.
+      Verify: confirm no size-limit code exists before or after
+      extractall() / fromstring().
     </condition>
   </reportable>
 
   <not_reportable>
-    <condition id="auth-required" reason="신뢰 모델 내부">
-      트리거하려면 인증된 사용자 계정이 필요하다.
+    <condition id="auth-required" reason="inside trust model">
+      Triggering it requires an authenticated user account.
     </condition>
-    <condition id="admin-only" reason="신뢰 모델 내부">
-      staff / superuser / admin 권한이 있어야 도달 가능.
+    <condition id="admin-only" reason="inside trust model">
+      Requires staff / superuser / admin privileges to reach.
     </condition>
-    <condition id="intended-slowness" reason="의도된 설계">
-      비밀번호 해싱(PBKDF2, bcrypt, argon2)이 느린 것.
+    <condition id="intended-slowness" reason="intended design">
+      Slow password hashing (PBKDF2, bcrypt, argon2) — slowness is by
+      design.
     </condition>
-    <condition id="single-session" reason="영향 제한">
-      공격자 자신의 세션/프로세스만 영향 — 서비스 전체 중단 아님.
+    <condition id="single-session" reason="bounded impact">
+      Only the attacker's own session/process is affected — not a
+      service-wide outage.
     </condition>
-    <condition id="non-default-config" reason="설정 의존">
-      기본 설정에서 비활성화된 기능에서만 발생.
+    <condition id="non-default-config" reason="config-dependent">
+      Only occurs in a feature that is disabled in the default
+      configuration.
     </condition>
-    <condition id="linear-complexity" reason="정상 동작">
-      O(n) 복잡도이고 n의 상한이 합리적으로 제한됨.
+    <condition id="linear-complexity" reason="normal behavior">
+      O(n) complexity with a reasonable upper bound on n.
     </condition>
   </not_reportable>
 
   <verify>
-    <item>공격자가 직접 제어하는 입력이 문제 패턴에 도달하는 경로를 추적했는가?</item>
-    <item>ReDoS라면: 해당 정규식 패턴 문자열을 코드에서 직접 읽었는가?</item>
-    <item>메모리/루프라면: 상한 검사 코드가 없음을 함수 전체 읽기로 확인했는가?</item>
-    <item>서버 전체 영향인가, 단일 워커/프로세스인가?</item>
+    <item>Did you trace the path by which attacker-controlled input reaches the problematic pattern?</item>
+    <item>For ReDoS: did you read the regex pattern string directly from the code?</item>
+    <item>For memory/loop bounds: did you read the entire function to confirm there is no upper-bound check?</item>
+    <item>Is the impact server-wide, or limited to a single worker/process?</item>
   </verify>
 
 </policy>

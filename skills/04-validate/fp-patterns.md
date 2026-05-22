@@ -1,72 +1,72 @@
-# Skill 04-B: 신뢰도 점수 계산
+# Skill 04-B: Confidence Scoring
 
-## 목적
-04-A를 통과한 발견의 신뢰도를 계산한다.
-신뢰도는 "얼마나 확실한가"가 아니라 "얼마나 많은 코드를 직접 읽어서 확인했는가"를 반영한다.
+## Purpose
+Compute the confidence of a finding that passed 04-A.
+Confidence reflects not "how sure you feel" but "how much code you actually read to confirm it".
 
 ---
 
-## 신뢰도 기본값
+## Confidence baselines
 
-| 확인 수준 | 기본 신뢰도 |
+| Confirmation level | Baseline confidence |
 |---------|-----------|
-| 소스→싱크 전체 경로를 코드로 확인함 | 0.70 |
-| 경로 일부가 추적 불완전 (흐름 끊김 있음) | 0.45 |
-| Semgrep 발견 + 해당 줄 코드만 읽음 | 0.40 |
-| 수동 리뷰로 발견, 경로 추적 없음 | 0.35 |
+| Full source→sink path confirmed by reading code | 0.70 |
+| Part of the path is trace-incomplete (flow broken somewhere) | 0.45 |
+| Semgrep finding + only the matched line read | 0.40 |
+| Found via manual review, no path trace | 0.35 |
 
 ---
 
-## 신뢰도 조정
+## Confidence adjustments
 
-조정 항목은 코드를 읽어서 확인된 것만 적용한다.
-"아마 있을 것이다"는 적용하지 않는다.
+Apply an adjustment only when you confirmed it by reading code.
+Do not apply "this probably exists".
 
-### 상승 (+)
+### Increase (+)
 
-| 조건 | 조정 | 확인 방법 |
+| Condition | Adjustment | How to confirm |
 |------|------|---------|
-| 소스가 구체적 (`req.body.X`, `request.args['Y']`) | +0.10 | 해당 추출 코드 읽음 |
-| 경로 단계가 3개 이상 (모두 코드로 확인함) | +0.08 | 각 단계 코드 인용 있음 |
-| 같은 파일에 다른 확인된 취약점이 있음 | +0.05 | — |
-| 싱크가 `eval`, `exec`, `os.system`, `subprocess` | +0.10 | 해당 호출 코드 읽음 |
+| Source is specific (`req.body.X`, `request.args['Y']`) | +0.10 | Read the extraction code |
+| Path has 3+ hops (all confirmed in code) | +0.08 | Each hop has a code citation |
+| Same file already has another confirmed vuln | +0.05 | — |
+| Sink is `eval`, `exec`, `os.system`, `subprocess` | +0.10 | Read the call site |
 
-### 하락 (-)
+### Decrease (-)
 
-| 조건 | 조정 | 확인 방법 |
+| Condition | Adjustment | How to confirm |
 |------|------|---------|
-| 경로 어딘가에서 추적이 끊어졌다 | -0.15 | 끊긴 위치와 이유 기록 |
-| 소스 코드에서 가드 코드를 1개 읽었다 | -0.10 | 해당 검증 코드 읽음 |
-| 소스 코드에서 가드 코드를 2개 읽었다 | -0.18 | 해당 검증 코드 읽음 |
-| 소스 코드에서 가드 코드를 3개+ 읽었다 | -0.25 | 해당 검증 코드 읽음 |
-| 테스트 파일 경로임 | -0.20 | 파일 경로 확인 |
-| 죽은 코드 마커를 코드에서 읽었다 | -0.15 | 해당 마커 코드 읽음 |
-| taint 경로에서 인코딩 함수를 읽었다 | -0.12 | 해당 함수 내부 읽음 |
-| SSRF인데 코드에서 localhost만 접근함 | -0.15 | URL 구성 코드 읽음 |
-| Semgrep security-audit 룰셋 출처 | -0.12 | rule_id 확인 |
+| Trace broke somewhere on the path | -0.15 | Record where and why |
+| Read 1 guard in the source code | -0.10 | Read the validation code |
+| Read 2 guards in the source code | -0.18 | Read the validation code |
+| Read 3+ guards in the source code | -0.25 | Read the validation code |
+| Path is a test file | -0.20 | Confirm the file path |
+| Read a dead-code marker in the code | -0.15 | Read the marker |
+| Read an encoding function on the taint path | -0.12 | Read inside that function |
+| SSRF but the code only reaches localhost | -0.15 | Read the URL construction |
+| Source is Semgrep security-audit ruleset | -0.12 | Confirm the rule_id |
 
 ---
 
-## 최종 판정
+## Final verdict
 
-| 신뢰도 | 처리 |
+| Confidence | Action |
 |--------|------|
-| 0.70 이상 | 보고서 작성 |
-| 0.25~0.69 | 보고서 작성 + 신뢰도 명시 |
-| 0.25 미만 | FP 처리 — 보고서 미작성 |
+| ≥ 0.70 | Write report |
+| 0.25–0.69 | Write report + state confidence |
+| < 0.25 | Treat as FP — no report |
 
 ---
 
-## 출력 형식
+## Output format
 
 ```
 ## Confidence: <file>:<line>
 
-기본 신뢰도: 0.XX (확인 수준: <소스→싱크 전체 / 일부 추적 / Semgrep만>)
+Baseline confidence: 0.XX (level: <full source→sink / partial trace / Semgrep only>)
 
-조정 내역:
-  +0.10 — 구체적 소스 확인 (<file>:<line> → "<코드>")
-  -0.10 — 가드 코드 1개 확인 (<file>:<line> → "<코드>")
+Adjustments:
+  +0.10 — specific source confirmed (<file>:<line> → "<code>")
+  -0.10 — 1 guard confirmed (<file>:<line> → "<code>")
 
-최종 신뢰도: 0.XX → 처리: 보고서 작성 / FP
+Final confidence: 0.XX → Action: write report / FP
 ```

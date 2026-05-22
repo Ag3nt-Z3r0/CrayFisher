@@ -1,0 +1,146 @@
+rules:
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Default-config detection — surfaced into criteria-gate.md §2 as the
+  # "trivially-triggerable in default config" check.
+  # All rules tagged default_check: true.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: default-ask-off-py
+    message: "DEFAULT_ASK='off' (or equivalent) — tool execution skips user approval by default (LLM06)."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-250"
+      owasp-llm: "LLM06"
+      confidence: HIGH
+      default_check: true
+    pattern-either:
+      - pattern: DEFAULT_ASK = "off"
+      - pattern: DEFAULT_ASK = 'off'
+      - pattern: DEFAULT_ASK = False
+      - pattern: ASK_BEFORE_RUN = False
+
+  - id: default-ask-off-ts
+    message: "DEFAULT_ASK = 'off' / askBeforeRun = false — confirmless tool execution by default (LLM06)."
+    severity: ERROR
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-250"
+      owasp-llm: "LLM06"
+      confidence: HIGH
+      default_check: true
+    pattern-either:
+      - pattern: const DEFAULT_ASK = "off"
+      - pattern: const askBeforeRun = false
+      - pattern: askBeforeRun: false
+      - pattern: DEFAULT_ASK = "off"
+
+  - id: auto-approve-true-py
+    message: "autoApprove / auto_approve = True — tool calls auto-approved by default (LLM06)."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-250"
+      owasp-llm: "LLM06"
+      confidence: HIGH
+      default_check: true
+    pattern-either:
+      - pattern: auto_approve = True
+      - pattern: autoApprove = True
+      - pattern: $CFG.auto_approve = True
+
+  - id: auto-approve-true-ts
+    message: "autoApprove: true — tool calls auto-approved by default (LLM06)."
+    severity: ERROR
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-250"
+      owasp-llm: "LLM06"
+      confidence: HIGH
+      default_check: true
+    pattern-either:
+      - pattern: autoApprove: true
+      - pattern: const autoApprove = true
+
+  - id: tools-allow-undefined-ts
+    message: "toolsAllow is undefined / unset — all registered tools are allowed by default (LLM06, CWE-269)."
+    severity: WARNING
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-269"
+      owasp-llm: "LLM06"
+      confidence: MEDIUM
+      default_check: true
+    pattern-either:
+      - pattern: toolsAllow: undefined
+      - pattern: toolsAllow: null
+      - pattern: let toolsAllow
+      - pattern: var toolsAllow
+
+  - id: tools-allow-none-py
+    message: "tools_allow = None — all registered tools allowed by default (CWE-269)."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-269"
+      owasp-llm: "LLM06"
+      confidence: MEDIUM
+      default_check: true
+    pattern-either:
+      - pattern: tools_allow = None
+      - pattern: allowed_tools = None
+      - pattern: $CFG.allowed_tools = None
+
+  - id: human-input-mode-never-default
+    message: "AutoGen-style agent default of human_input_mode='NEVER' (LLM06)."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-250"
+      owasp-llm: "LLM06"
+      confidence: HIGH
+      default_check: true
+    pattern-either:
+      - pattern: human_input_mode = "NEVER"
+      - pattern: HUMAN_INPUT_MODE = "NEVER"
+
+  - id: permission-mode-auto-default
+    message: "permission_mode = 'auto' as default config (LLM06)."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-250"
+      owasp-llm: "LLM06"
+      confidence: HIGH
+      default_check: true
+    pattern-either:
+      - pattern: permission_mode = "auto"
+      - pattern: permission_mode: "auto"
+
+  - id: sandbox-auto-no-availability-check
+    message: "sandbox = 'auto' set without an accompanying sandbox-availability check — silent fallback to host execution (CWE-269)."
+    severity: WARNING
+    languages: [python, typescript, javascript]
+    metadata:
+      cwe: "CWE-269"
+      owasp-llm: "LLM06"
+      confidence: LOW
+      default_check: true
+    pattern-either:
+      - pattern: sandbox = "auto"
+      - pattern: sandbox: "auto"
+
+  - id: tool-allowlist-from-env
+    message: "Tool allowlist sourced from process.env / os.environ — denylist-style policy with env-controllable override (CWE-184)."
+    severity: WARNING
+    languages: [python, typescript, javascript]
+    metadata:
+      cwe: "CWE-184"
+      owasp-llm: "LLM06"
+      confidence: LOW
+      default_check: true
+    pattern-either:
+      - pattern: process.env.TOOLS_ALLOW
+      - pattern: os.environ.get("TOOLS_ALLOW")
+      - pattern: os.environ["TOOLS_ALLOW"]

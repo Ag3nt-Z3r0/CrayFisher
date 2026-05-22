@@ -1,0 +1,102 @@
+rules:
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Trust layer model:
+  #   [1] System Prompt       — operator-controlled, highest trust
+  #   [2] Developer Messages  — hardcoded in code, high trust
+  #   [3] User Turn           — user input, low trust
+  #   [4] Tool Results        — external world, lowest trust
+  # Promotion = low-trust content rising into a higher-trust layer.
+  # See skills/03-taint/ai-agent-flows.md (A5 / A4 / A8).
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: system-message-fstring-py
+    message: "System-role message built via f-string with non-literal interpolation — possible promotion of user/tool content into system layer (A5, CWE-1427)."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: MEDIUM
+      trust_layer: system
+    pattern-either:
+      - pattern: |
+          {"role": "system", "content": f"...{$X}..."}
+      - pattern: |
+          SystemMessage(content=f"...{$X}...")
+      - pattern: |
+          messages = [{"role": "system", "content": f"...{$X}..."}, ...]
+
+  - id: system-message-fstring-ts
+    message: "System-role message built via template literal with non-literal interpolation — possible promotion of user/tool content into system layer (A5)."
+    severity: ERROR
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: MEDIUM
+      trust_layer: system
+    pattern-either:
+      - pattern: |
+          { role: "system", content: `...${$X}...` }
+      - pattern: |
+          [{ role: "system", content: `...${$X}...` }, ...]
+
+  - id: tool-output-into-system-py
+    message: "Tool output (role='tool' or *_result) re-injected into role='system' on subsequent turn — A3+A5 chained promotion."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: LOW
+      trust_layer: system
+    pattern: |
+      messages[0]["content"] = $X + messages[0]["content"]
+
+  - id: dev-message-from-request-py
+    message: "Developer-layer message constructed from inbound request data — promotion (A5)."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: LOW
+      trust_layer: developer
+    pattern-either:
+      - pattern: |
+          DEVELOPER_PROMPT = request.$F(...)
+      - pattern: |
+          DEVELOPER_PROMPT = $REQ.json["..."]
+
+  - id: trust-label-string-write-ts
+    message: "String label 'System:' / 'MEDIA:' / 'trusted' written into model input from non-literal source — trust label promotion bug pattern (Agent-Zero-DB G1)."
+    severity: WARNING
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-1427"
+      owasp-llm: "LLM01"
+      confidence: LOW
+      trust_layer: system
+    pattern-either:
+      - pattern: |
+          `System: ${$X}`
+      - pattern: |
+          `MEDIA: ${$X}`
+      - pattern: |
+          `trusted: ${$X}`
+
+  - id: subagent-output-into-orchestrator-prompt
+    message: "Subagent output passed directly into orchestrator prompt without validation — Multi-Agent Trust Escalation (A4)."
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-269"
+      owasp-llm: "LLM06"
+      confidence: LOW
+      trust_layer: developer
+    pattern-either:
+      - pattern: |
+          orchestrator_prompt = f"...{$SUBAGENT.output}..."
+      - pattern: |
+          orchestrator_messages.append({"role": "system", "content": $SUBAGENT.result})

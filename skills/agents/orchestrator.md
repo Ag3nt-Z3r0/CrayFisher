@@ -1,51 +1,53 @@
-# 오케스트레이터 에이전트 (Orchestrator) — 실행 지침
+# Orchestrator Agent — Execution Guide
 
-## 역할
+## Role
 
-3개의 전문 서브에이전트를 순서대로 호출하여 취약점 후보를 공격→반박→판정 사이클로 검증한다.
-Python `tools/` 실행 및 서브에이전트 결과 수집이 오케스트레이터의 유일한 책임이다.
-직접 취약점 분석을 수행하지 않는다.
+Invoke the three specialized subagents in order and validate each
+vulnerability candidate through the attack → rebuttal → judgment cycle.
+The orchestrator's only responsibilities are running Python `tools/` and
+collecting subagent results.
+The orchestrator does not perform vulnerability analysis itself.
 
-## 사전 준비
+## Pre-flight
 
 ```bash
-# 1. AGENT.md 읽기 (리젝 패턴 숙지)
-# 2. 저장소 클론
+# 1. Read AGENT.md (be familiar with rejection patterns)
+# 2. Clone the repo
 python tools/clone.py <github_url>
 ```
 
 ---
 
-## 에이전트 호출 방법
+## How to invoke agents
 
-Claude Code의 **Agent 도구**로 각 에이전트를 호출한다.
-각 에이전트에게 아래 형식으로 프롬프트를 전달한다:
+Use Claude Code's **Agent tool** to invoke each agent.
+Pass the prompt to each agent in this form:
 
 ```
-[에이전트 시스템 프롬프트 파일 내용]
+[contents of the agent's system prompt file]
 
 ---
 INPUT:
-<JSON 데이터>
+<JSON data>
 ```
 
 ---
 
-## Phase 1: 정찰 에이전트 호출
+## Phase 1: Invoke the recon agent
 
-### 서브에이전트 프롬프트 구성
+### Subagent prompt
 
 ```
-skills/agents/recon-agent.md 파일의 내용을 시스템 프롬프트로 사용.
+Use the contents of skills/agents/recon-agent.md as the system prompt.
 
 INPUT:
 {
-  "local_path": "<clone된 경로>",
-  "github_url": "<원본 URL>"
+  "local_path": "<cloned path>",
+  "github_url": "<original URL>"
 }
 ```
 
-### 기대 출력
+### Expected output
 
 `recon_result.json`:
 ```json
@@ -55,28 +57,28 @@ INPUT:
 }
 ```
 
-결과를 `reports/<repo-name>/recon_result.json` 에 저장한다.
+Save the result to `reports/<repo-name>/recon_result.json`.
 
 ---
 
-## Phase 2: 방어자 에이전트 호출 (finding별 병렬 실행 가능)
+## Phase 2: Invoke the defender agent (can run per-finding in parallel)
 
-각 finding에 대해 방어자 에이전트를 호출한다.
-finding이 5개 이상이면 병렬로 호출한다.
+Invoke the defender agent for each finding.
+If there are 5 or more findings, invoke them in parallel.
 
-### 서브에이전트 프롬프트 구성
+### Subagent prompt
 
 ```
-skills/agents/defender-agent.md 파일의 내용을 시스템 프롬프트로 사용.
+Use the contents of skills/agents/defender-agent.md as the system prompt.
 
 INPUT:
 {
-  "local_path": "<clone된 경로>",
-  "finding": { <FIND-001 전체 JSON> }
+  "local_path": "<cloned path>",
+  "finding": { <full FIND-001 JSON> }
 }
 ```
 
-### 기대 출력
+### Expected output
 
 `defender_FIND-001.json`:
 ```json
@@ -88,29 +90,29 @@ INPUT:
 }
 ```
 
-결과를 `reports/<repo-name>/defender_<finding_id>.json` 에 저장한다.
+Save the result to `reports/<repo-name>/defender_<finding_id>.json`.
 
 ---
 
-## Phase 3: 판정 에이전트 호출
+## Phase 3: Invoke the judgment agent
 
-`REBUTTED` 판정을 받은 finding은 제외한다.
-나머지 finding에 대해 판정 에이전트를 호출한다.
+Drop findings that received a `REBUTTED` verdict.
+Invoke the judgment agent for the remaining findings.
 
-### 서브에이전트 프롬프트 구성
+### Subagent prompt
 
 ```
-skills/agents/judgment-agent.md 파일의 내용을 시스템 프롬프트로 사용.
+Use the contents of skills/agents/judgment-agent.md as the system prompt.
 
 INPUT:
 {
-  "local_path": "<clone된 경로>",
-  "finding": { <FIND-001 전체 JSON> },
-  "defense": { <defender_FIND-001 전체 JSON> }
+  "local_path": "<cloned path>",
+  "finding": { <full FIND-001 JSON> },
+  "defense": { <full defender_FIND-001 JSON> }
 }
 ```
 
-### 기대 출력
+### Expected output
 
 `judgment_FIND-001.json`:
 ```json
@@ -123,68 +125,68 @@ INPUT:
 }
 ```
 
-결과를 `reports/<repo-name>/judgment_<finding_id>.json` 에 저장한다.
+Save the result to `reports/<repo-name>/judgment_<finding_id>.json`.
 
 ---
 
-## Phase 4: 최종 취합
+## Phase 4: Final aggregation
 
-판정 에이전트 결과를 취합하여 요약 테이블을 출력한다.
+Aggregate the judgment-agent results and emit a summary table.
 
 ```markdown
-## 스캔 결과 요약: <repo-name>
+## Scan Summary: <repo-name>
 
-| ID | 유형 | 판정 | 신뢰도 | CVSS | 다음 행동 |
+| ID | Type | Verdict | Confidence | CVSS | Next Action |
 |----|------|------|--------|------|---------|
 | FIND-001 | SQLI | CONFIRMED | 0.80 | 8.1 | CVE_REPORT |
 | FIND-002 | XSS | FP | 0.25 | - | DISCARD |
 ```
 
-`next_action: CVE_REPORT` 인 finding에 대해:
+For each finding with `next_action: CVE_REPORT`:
 ```
-skills/05-report/cve-report.md 를 읽고 보고서를 작성한다.
-저장: reports/<repo-name>/CVE-CANDIDATE-<id>.md
+Read skills/05-report/cve-report.md and write the report.
+Save: reports/<repo-name>/CVE-CANDIDATE-<id>.md
 ```
 
 ---
 
-## 실행 예시
+## Execution example
 
 ```
 INPUT: https://github.com/<owner>/<repo>
 
-오케스트레이터 실행 순서:
+Orchestrator execution sequence:
 1. python tools/clone.py https://github.com/<owner>/<repo>
    → local_path = /tmp/vuln-agent/<repo>
 
-2. Agent 호출: 정찰 에이전트
-   prompt = [recon-agent.md 내용] + INPUT {local_path}
-   → recon_result.json 저장
+2. Agent call: recon agent
+   prompt = [recon-agent.md contents] + INPUT {local_path}
+   → save recon_result.json
 
-3. findings 목록 확인
-   → FIND-001, FIND-002, FIND-003 발견됨
+3. Inspect findings list
+   → FIND-001, FIND-002, FIND-003 discovered
 
-4. Agent 호출 (병렬): 방어자 에이전트 × 3
+4. Agent calls (parallel): defender agent × 3
    → defender_FIND-001.json: CONFIRMED
-   → defender_FIND-002.json: REBUTTED (ORM 파라미터화 확인)
+   → defender_FIND-002.json: REBUTTED (ORM parameterization confirmed)
    → defender_FIND-003.json: PARTIAL
 
-5. REBUTTED 제외 → FIND-001, FIND-003 진행
+5. Drop REBUTTED → continue with FIND-001, FIND-003
 
-6. Agent 호출 (병렬): 판정 에이전트 × 2
+6. Agent calls (parallel): judgment agent × 2
    → judgment_FIND-001.json: CONFIRMED, CVE_REPORT
    → judgment_FIND-003.json: CONFIRMED_LOW, CVE_REPORT
 
-7. CVE 보고서 작성: FIND-001, FIND-003
+7. Write CVE reports: FIND-001, FIND-003
 ```
 
 ---
 
-## 오류 처리
+## Error handling
 
-| 상황 | 처리 |
+| Situation | Action |
 |------|------|
-| 서브에이전트가 JSON 없이 응답 | 해당 finding을 `NEEDS_MORE_EVIDENCE`로 처리 |
-| 정찰 에이전트 finding이 0개 | "취약점 없음" 보고서 생성 후 종료 |
-| clone 실패 | 사용자에게 오류 보고 후 중단 |
-| 판정 에이전트가 INVESTIGATE_FURTHER 반환 | 해당 finding을 보류 목록에 추가하고 요약에 포함 |
+| Subagent responded without JSON | Treat that finding as `NEEDS_MORE_EVIDENCE` |
+| Recon agent returns 0 findings | Emit a "no vulnerabilities" report and exit |
+| Clone failed | Report the error to the user and abort |
+| Judgment agent returns INVESTIGATE_FURTHER | Add the finding to the pending list and include it in the summary |

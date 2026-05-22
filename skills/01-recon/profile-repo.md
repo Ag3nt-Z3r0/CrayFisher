@@ -1,57 +1,93 @@
 # Skill 01-A: Repository Profiling
 
-## 목적
-대상 저장소를 클론하고 공격 표면 분석에 필요한 기술 스택·의존성·규모를 파악한다.
+## Purpose
 
-## 입력
-- `TARGET_URL`: 분석할 GitHub 저장소 URL
+Clone the target and capture the tech stack / dependencies / size needed
+for attack-surface analysis.
 
-## 실행
+## Input
 
-### Step 1 — 클론
+- `TARGET_URL`: GitHub URL to analyze.
+
+## Steps
+
+### Step 1 — Clone
+
 ```bash
 python tools/clone.py <TARGET_URL>
 ```
-결과에서 `local_path` 를 추출한다. 이후 모든 단계에서 이 경로를 사용한다.
 
-### Step 2 — 스택 감지
+Extract `local_path` from the result. Use this path in every later step.
+
+### Step 2 — Stack detection
+
 ```bash
 python tools/detect_stack.py <local_path>
 ```
 
-### Step 3 — 판단
-출력 JSON을 읽고 아래 항목을 정리한다.
+### Step 3 — Read the JSON output
 
-| 항목 | 확인 내용 |
-|------|-----------|
-| `primary_language` | 주요 분석 대상 언어 결정 |
-| `frameworks` | 해당 프레임워크의 알려진 취약 패턴 선택 |
-| `dependency_files` | 주요 패키지 → `tools/osv_lookup.py` 대상 |
-| `total_lines` | 10만 줄 초과 시 파일 범위 좁히기 필요 |
+Capture these fields:
 
-#### AI 에이전트 프레임워크 감지 시 주목할 점
-- `mcp` 감지 → `skills/03-taint/ai-agent-flows.md` 우선 실행
-- `langchain` / `crewai` / `autogen` → Prompt Injection 경로 집중 분석
-- `openai-agents` → `Runner.run()` 인자 추적
+| Field | Meaning |
+|---|---|
+| `primary_language` | Picks the main analysis language |
+| `frameworks` | Selects framework-specific vuln patterns |
+| `is_agent_target` | Flips the entire pipeline into Agent-first mode |
+| `agent_frameworks` | Which agent frameworks were detected |
+| `dependency_files` | Top packages → feed into `tools/osv_lookup.py` |
+| `total_lines` | Over 100k → narrow file scope |
 
-### Step 4 — OSV 주요 패키지 조회 (상위 5개)
-`dependency_files` 에서 주요 패키지를 추출하여 각각 조회한다.
+### Step 3.5 — Agent-target detour *(only when `is_agent_target == true`)*
+
+```bash
+python tools/architecture_map.py <local_path>
+python tools/agent_trust_graph.py <local_path>
+python tools/ghsa_lookup.py <main_package>
+```
+
+Capture:
+
+- `architecture_map.components[]` and per-category counts
+- `agent_trust_graph.summary.promotions` — promotion edges are
+  immediate Phase 3 candidates
+- `ghsa_lookup.seed_hits` — prior advisories on this package or the
+  Agent-Zero-DB corpus
+
+Emit an `agent_architecture` block in the profile output.
+
+### Step 4 — OSV scan of top packages (up to 5)
+
+Extract the main packages from `dependency_files`. Query each:
+
 ```bash
 python tools/osv_lookup.py <package_name> <ecosystem>
 # ecosystem: npm | PyPI | Go | Maven | RubyGems | crates.io
 ```
 
-## 출력
-다음 형식으로 프로파일 요약을 작성한다.
+### Step 5 — Recent-history scan *(agent target only)*
+
+```bash
+python tools/incomplete_fix_scan.py <local_path>
+```
+
+Capture `candidates[]` — these become Phase 3 priority reads.
+
+## Output
 
 ```
-## Repo Profile: <저장소명>
+## Repo Profile: <repo>
 
 - URL: <url>
 - Primary Language: <language>
 - Frameworks: <list>
 - Total Files / Lines: <N> / <N>
-- AI Agent Framework: <있음/없음 + 종류>
-- 주요 의존성 CVE: <있으면 id + summary>
-- 다음 단계: [01-B, 02-A, ...]
+- is_agent_target: true|false
+- agent_frameworks: <list>
+- Top dependency CVEs: <id + summary>
+- (agent target only) Architecture components: <component-name × count>
+- (agent target only) Trust-graph promotions: <count>
+- (agent target only) GHSA seed hits: <ids>
+- (agent target only) Incomplete-fix candidates: <count>
+- Next steps: [01-B, 02-A, 03-B if agent target else 03-A, ...]
 ```
