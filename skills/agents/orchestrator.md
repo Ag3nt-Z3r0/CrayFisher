@@ -157,7 +157,7 @@ INPUT: https://github.com/<owner>/<repo>
 
 Orchestrator execution sequence:
 1. python tools/clone.py https://github.com/<owner>/<repo>
-   → local_path = /tmp/vuln-agent/<repo>
+   → local_path = /tmp/crayfisher-<random>/<repo>
 
 2. Agent call: recon agent
    prompt = [recon-agent.md contents] + INPUT {local_path}

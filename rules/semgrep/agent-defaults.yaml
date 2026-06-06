@@ -33,7 +33,7 @@ rules:
     pattern-either:
       - pattern: const DEFAULT_ASK = "off"
       - pattern: const askBeforeRun = false
-      - pattern: askBeforeRun: false
+      - pattern: "askBeforeRun: false"
       - pattern: DEFAULT_ASK = "off"
 
   - id: auto-approve-true-py
@@ -60,7 +60,7 @@ rules:
       confidence: HIGH
       default_check: true
     pattern-either:
-      - pattern: autoApprove: true
+      - pattern: "autoApprove: true"
       - pattern: const autoApprove = true
 
   - id: tools-allow-undefined-ts
@@ -73,8 +73,8 @@ rules:
       confidence: MEDIUM
       default_check: true
     pattern-either:
-      - pattern: toolsAllow: undefined
-      - pattern: toolsAllow: null
+      - pattern: "toolsAllow: undefined"
+      - pattern: "toolsAllow: null"
       - pattern: let toolsAllow
       - pattern: var toolsAllow
 
@@ -116,7 +116,7 @@ rules:
       default_check: true
     pattern-either:
       - pattern: permission_mode = "auto"
-      - pattern: permission_mode: "auto"
+      - pattern: 'permission_mode: "auto"'
 
   - id: sandbox-auto-no-availability-check
     message: "sandbox = 'auto' set without an accompanying sandbox-availability check — silent fallback to host execution (CWE-269)."
@@ -129,7 +129,7 @@ rules:
       default_check: true
     pattern-either:
       - pattern: sandbox = "auto"
-      - pattern: sandbox: "auto"
+      - pattern: 'sandbox: "auto"'
 
   - id: tool-allowlist-from-env
     message: "Tool allowlist sourced from process.env / os.environ — denylist-style policy with env-controllable override (CWE-184)."

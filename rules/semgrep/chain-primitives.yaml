@@ -1,0 +1,150 @@
+rules:
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Chain-primitive sinks.
+  #
+  # These rules are INTENTIONALLY low-signal on their own. They do not flag
+  # "a vulnerability"; they flag a CAPABILITY (a primitive) that becomes
+  # critical only when composed with another primitive into a chain.
+  #
+  # Every rule carries `metadata.chain_primitive: <capability>` so the recon
+  # agent can drop the match straight into the capability graph built in
+  #   skills/03-taint/exploit-chaining.md  (Phase 3-C)
+  # against the vocabulary in
+  #   skills/00-meta/critical-chain-catalog.md  §2.
+  #
+  # Confidence is LOW by design — recon MUST read the sink to confirm the
+  # primitive before drawing a chain edge. A match is a hint, not a verdict.
+  # ─────────────────────────────────────────────────────────────────────
+
+  - id: chain-arbitrary-write-py
+    message: "File write to a non-literal path — arbitrary-write / bounded-write primitive. Chain candidate (catalog C2/C8) if the path is attacker-influenced."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-22"
+      chain_primitive: arbitrary-write
+      confidence: LOW
+    pattern-either:
+      - pattern: open($P, "w")
+      - pattern: open($P, "wb")
+      - pattern: open($P, "a")
+      - pattern: open($P, mode="w")
+      - pattern: $X.write_text(...)
+      - pattern: $X.write_bytes(...)
+
+  - id: chain-arbitrary-write-ts
+    message: "File write to a non-literal path — arbitrary-write / bounded-write primitive. Chain candidate (catalog C2) if the path is attacker-influenced."
+    severity: WARNING
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-22"
+      chain_primitive: arbitrary-write
+      confidence: LOW
+    pattern-either:
+      - pattern: fs.writeFile($P, ...)
+      - pattern: fs.writeFileSync($P, ...)
+      - pattern: fs.appendFile($P, ...)
+      - pattern: fs.appendFileSync($P, ...)
+
+  - id: chain-write-to-exec-location
+    message: "Names a startup/exec location — LOW-confidence write-to-exec-location HINT (may match comments/prose; recon MUST read to confirm). Login-shell sourced: .bash_profile/.bash_login/.profile/.zprofile. Interactive-shell sourced: .bashrc/.zshrc/.zshenv. Also cron, git hooks, sys.path .pth, ssh authorized_keys, npm pre/postinstall. Valid as a chain terminal ONLY if (a) the path is attacker-writable AND (b) the process entrypoint actually sources/executes THIS file — e.g. `bash -lc` sources .bash_profile/.profile, NOT .bashrc. Read the entrypoint to confirm."
+    severity: WARNING
+    languages: [generic]
+    metadata:
+      cwe: "CWE-94"
+      chain_primitive: write-to-exec-location
+      confidence: LOW
+    pattern-regex: '(\.bash_profile|\.bash_login|\.zprofile|\.profile|\.bashrc|\.zshrc|\.zshenv|authorized_keys|/etc/cron|crontab|\.git/hooks/|sitecustomize\.py|usercustomize\.py|\.npmrc|preinstall|postinstall|\.pth\b)'
+
+  - id: chain-symlink-plant-py
+    message: "Symlink creation — symlink-plant primitive (CWE-59). Chain candidate (catalog C2/C6) to escape a bounded-write or cross a sandbox FS bridge."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-59"
+      chain_primitive: symlink-plant
+      confidence: LOW
+    pattern-either:
+      - pattern: os.symlink(...)
+      - pattern: $P.symlink_to(...)
+
+  - id: chain-symlink-plant-ts
+    message: "Symlink creation — symlink-plant primitive (CWE-59). Chain candidate (catalog C2/C6)."
+    severity: WARNING
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-59"
+      chain_primitive: symlink-plant
+      confidence: LOW
+    pattern-either:
+      - pattern: fs.symlink(...)
+      - pattern: fs.symlinkSync(...)
+
+  - id: chain-env-passthrough-exec-py
+    message: "Subprocess spawned with a caller-supplied environment — env-control → exec primitive. Chain candidate (catalog C3) if an env var on a denylist-bypass list reaches the child."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-184"
+      chain_primitive: env-control
+      confidence: LOW
+    pattern-either:
+      - pattern: subprocess.run(..., env=$E, ...)
+      - pattern: subprocess.Popen(..., env=$E, ...)
+      - pattern: subprocess.call(..., env=$E, ...)
+      - pattern: os.execve($P, $A, $E)
+
+  - id: chain-env-passthrough-exec-ts
+    message: "Child process spawned with a caller-supplied environment — env-control → exec primitive. Chain candidate (catalog C3)."
+    severity: WARNING
+    languages: [typescript, javascript]
+    metadata:
+      cwe: "CWE-184"
+      chain_primitive: env-control
+      confidence: LOW
+    pattern-either:
+      - pattern: "$CP.spawn(..., {env: $E, ...})"
+      - pattern: "$CP.spawnSync(..., {env: $E, ...})"
+      - pattern: "$CP.exec(..., {env: $E, ...})"
+      - pattern: "$CP.execFile(..., {env: $E, ...})"
+
+  - id: chain-syspath-mutation-py
+    message: "Mutation of sys.path — environment fact that turns a write into write-to-exec-location (catalog C2). A writable dir added here becomes an import sink at boot."
+    severity: INFO
+    languages: [python]
+    metadata:
+      cwe: "CWE-94"
+      chain_primitive: write-to-exec-location
+      confidence: LOW
+    pattern-either:
+      - pattern: sys.path.insert($I, $P)
+      - pattern: sys.path.append($P)
+
+  - id: chain-deser-sink-reachable-py
+    message: "Unsafe deserializer — deser-sink primitive (CWE-502). Terminal of a chain (catalog C8) when attacker bytes reach it via another primitive."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-502"
+      chain_primitive: deser-sink
+      confidence: LOW
+    pattern-either:
+      - pattern: pickle.loads(...)
+      - pattern: pickle.load(...)
+      - pattern: yaml.load($X)
+      - pattern: yaml.load($X, Loader=yaml.Loader)
+
+  - id: chain-ssrf-fetch-host-var
+    message: "Outbound request to a non-literal host — ssrf primitive (CWE-918). Chain candidate (catalog C7) toward cloud-metadata credential reuse."
+    severity: WARNING
+    languages: [python]
+    metadata:
+      cwe: "CWE-918"
+      chain_primitive: ssrf
+      confidence: LOW
+    pattern-either:
+      - pattern: requests.get($U, ...)
+      - pattern: requests.post($U, ...)
+      - pattern: urllib.request.urlopen($U, ...)
+      - pattern: httpx.get($U, ...)

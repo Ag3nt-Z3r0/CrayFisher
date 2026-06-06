@@ -84,6 +84,70 @@ def classify_lhs_destination(line: str) -> str | None:
 
 IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
 
+# ── Tool-arg → sink edges ──────────────────────────────────────────────
+# The layer model above only sees assignment-based promotions. The most common
+# agent RCE — an untrusted tool-handler argument reaching a dangerous sink — has
+# no assignment chain, so it was invisible. These patterns add it as an explicit
+# `tool-arg-to-sink` edge (from_layer USER → a sink), the capability-graph seed
+# Phase 3-C chaining needs.
+SINK_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("arbitrary-write", re.compile(r"\bfs\.(?:writeFileSync|writeFile|appendFileSync|appendFile)\s*\(|\.write_text\s*\(|\.write_bytes\s*\(|\bopen\s*\([^)]*['\"][wa]")),
+    ("path-control",    re.compile(r"\bpath\.(?:resolve|join)\s*\(|\bos\.path\.join\s*\(")),
+    ("exec-primitive",  re.compile(r"\bchild_process\.(?:exec|spawn|execSync|spawnSync)\b|\bsubprocess\.(?:run|Popen|call|check_output)\s*\(|\bos\.system\s*\(|\beval\s*\(|\bexecFile\s*\(")),
+    ("deser-sink",      re.compile(r"\bpickle\.loads?\s*\(|\byaml\.load\s*\(")),
+]
+# Tool-handler param lists (USER/TOOL-tier, attacker-influenced). [\s\S] spans
+# the gap between the registration call and the handler's argument list.
+HANDLER_PARAMS: list[re.Pattern] = [
+    re.compile(r"(?:server|mcpServer|McpServer)\.tool\s*\([\s\S]{0,400}?async\s*\(\s*\{([^}]*)\}\s*\)"),
+    re.compile(r"(?:server|mcpServer|McpServer)\.tool\s*\([\s\S]{0,400}?async\s*\(\s*([A-Za-z_$][\w$]*)\s*\)"),
+    re.compile(r"\.setRequestHandler\s*\([\s\S]{0,200}?async\s*\(\s*([A-Za-z_$][\w$]*)"),
+    re.compile(r"@(?:langchain\.)?tool\b[\s\S]{0,80}?def\s+\w+\s*\(([^)]*)\)"),
+    re.compile(r"@function_tool\b[\s\S]{0,80}?def\s+\w+\s*\(([^)]*)\)"),
+]
+
+
+def _param_idents(group: str) -> list[str]:
+    out: list[str] = []
+    for part in group.split(","):
+        p = re.split(r"[:=]", part.strip())[0].strip().replace("...", "").strip()
+        if re.fullmatch(r"[A-Za-z_$][\w$]*", p) and p not in {"this", "self"}:
+            out.append(p)
+    return out
+
+
+def tool_arg_sink_edges(text: str, rel: str) -> tuple[list[dict], list[dict]]:
+    """Edges from tool-handler args (USER tier) to dangerous sinks in the same file."""
+    params: dict[str, int] = {}
+    for pat in HANDLER_PARAMS:
+        for m in pat.finditer(text):
+            hline = text.count("\n", 0, m.start()) + 1
+            for ident in _param_idents(m.group(1)):
+                params.setdefault(ident, hline)
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    if not params:
+        return nodes, edges
+    for primitive, spat in SINK_PATTERNS:
+        for m in spat.finditer(text):
+            sline = text.count("\n", 0, m.start()) + 1
+            ls = text.rfind("\n", 0, m.start()) + 1
+            le = text.find("\n", m.start())
+            line_text = text[ls: le if le != -1 else len(text)].strip()
+            hit = [p for p in params if re.search(r"\b" + re.escape(p) + r"\b", line_text)]
+            if not hit:
+                continue
+            nodes.append({"file": rel, "line": sline, "var": "+".join(hit),
+                          "layer": "USER", "snippet": line_text[:160]})
+            for p in hit:
+                edges.append({
+                    "from_node": {"file": rel, "line": params[p], "var": p},
+                    "to_node": {"file": rel, "line": sline, "sink": line_text[:160]},
+                    "from_layer": "USER", "to_layer": "SINK",
+                    "kind": "tool-arg-to-sink", "primitive": primitive,
+                })
+    return nodes, edges
+
 
 def scan(root: Path) -> dict:
     nodes: list[dict] = []
@@ -98,9 +162,10 @@ def scan(root: Path) -> dict:
         if f.suffix not in SCAN_EXTS:
             continue
         try:
-            lines = f.read_text(errors="ignore").splitlines()
+            raw_text = f.read_text(errors="ignore")
         except OSError:
             continue
+        lines = raw_text.splitlines()
         is_ts = f.suffix in {".ts", ".tsx", ".js", ".jsx", ".mjs"}
         rel = str(f.relative_to(root))
         var_layer: dict[str, tuple[str, int]] = {}  # var → (layer, lineno)
@@ -147,6 +212,11 @@ def scan(root: Path) -> dict:
                 })
         nodes.extend(file_nodes)
 
+        # Tool-arg → sink edges (the boundary the layer model can't see).
+        ta_nodes, ta_edges = tool_arg_sink_edges(raw_text, rel)
+        nodes.extend(ta_nodes)
+        edges.extend(ta_edges)
+
     by_layer: dict[str, int] = {}
     for n in nodes:
         by_layer[n["layer"]] = by_layer.get(n["layer"], 0) + 1
@@ -155,7 +225,8 @@ def scan(root: Path) -> dict:
         "edges": edges,
         "summary": {
             "nodes_per_layer": by_layer,
-            "promotions": len(edges),
+            "promotions": sum(1 for e in edges if e.get("kind") == "promotion"),
+            "tool_arg_to_sink": sum(1 for e in edges if e.get("kind") == "tool-arg-to-sink"),
         },
     }
 

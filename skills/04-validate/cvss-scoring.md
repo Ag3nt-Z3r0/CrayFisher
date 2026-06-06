@@ -50,6 +50,31 @@ For each vulnerability, pick the vector using the questions below.
 | Crypto Weakness (GCM) | `AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N` | 7.4 |
 | DoS (ReDoS) | `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H` | 7.5 |
 | Auth Bypass | `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N` | 9.1 |
+| **RCE chain (host exec)** | `AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H` | 10.0 |
+| **LPE chain (scope→admin/host)** | `AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H` | 9.9 |
+| **Sandbox-escape chain** | `AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H` | 9.0 |
+
+## Chained vulnerability scoring (`vuln_type = CHAIN`)
+
+A chain's vector is **assembled from two different links**, not scored as one
+sink:
+
+- **Exploitability metrics — from the ENTRY link** (how the attacker first gets
+  in): `AV`, `AC`, `PR`, `UI`. If the entry is an unauthenticated HTTP/webhook/
+  ingested-content path → `AV:N`, `PR:N`, `UI:N`. If the chain needs a logged-in
+  tier to start → `PR:L`. If any link needs a race (CWE-367) or a non-default
+  precondition → `AC:H`.
+- **Impact metrics + Scope — from the TERMINAL link** (what the end state does):
+  `C/I/A` and `S`. Host code execution / host file overwrite ⇒ `C:H/I:H/A:H`.
+  Crossing a sandbox / component / privilege boundary ⇒ `S:C` (this is what
+  pushes RCE/LPE chains to ~9.8–10.0).
+- **Do not average links.** A chain that *starts* unauth and *ends* in host RCE is
+  scored unauth-entry + host-RCE-impact, i.e. critical — even if every individual
+  link was only MEDIUM.
+
+Worked example (C2 — workspace write on `sys.path` ⇒ RCE):
+entry = unauth upload (`AV:N/PR:N/UI:N`), terminal = host import (`S:C/C:H/I:H/A:H`),
+no race (`AC:L`) → `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H` = **10.0**.
 
 ## Context adjustments
 

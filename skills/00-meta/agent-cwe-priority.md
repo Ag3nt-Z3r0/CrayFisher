@@ -117,9 +117,14 @@ only re-orders the gray zone.
   starting the A1–A10 sweep.
 - **Phase 2 (Static)** — Semgrep rule files are loaded in priority order:
   `agent-frameworks.yaml` → `agent-defaults.yaml` → `trust-layer-promotion.yaml` →
-  `incomplete-fix-heuristics.yaml`. Generic web rules come last.
+  `chain-primitives.yaml` → `incomplete-fix-heuristics.yaml`. Generic web rules
+  come last. `chain-primitives.yaml` matches are low-signal capability tags
+  (`metadata.chain_primitive`) that feed the Phase 3-C capability graph.
 - **Phase 3 (Taint)** — Component-frequency table (§5) drives initial grep
-  targets in [ai-agent-flows.md](../03-taint/ai-agent-flows.md).
+  targets in [ai-agent-flows.md](../03-taint/ai-agent-flows.md); the surviving
+  primitives are then composed into chains in
+  [exploit-chaining.md](../03-taint/exploit-chaining.md) (3-C), scored with the
+  critical-chain weighting below.
 - **Phase 4 (Validate)** — CWE Top 10 + Critical-13 subclasses are the lookup
   keys for [criteria-gate.md](../04-validate/criteria-gate.md) §2 and for the
   policy table.
@@ -129,6 +134,6 @@ only re-orders the gray zone.
 ## 8. Refresh policy
 
 This file is a *frozen distillation* of the OpenClaw corpus at the
-[Agent-Zero-DB](../../knowledge/agent-zero-db-distill.md) snapshot date. It is
+[Agent-Zero-DB](../knowledge/agent-zero-db-distill.md) snapshot date. It is
 not a live feed. When `tools/ghsa_lookup.py` finds drift > 10% on any row,
 emit a warning and queue a manual refresh.

@@ -29,8 +29,11 @@ RULES: list[tuple[str, str, re.Pattern]] = [
      re.compile(r"\b(openai\.chat|openai\.completions|client\.chat\.completions|client\.messages|openai\.Client)\b")),
     ("llm_call_sites", "anthropic",
      re.compile(r"\b(anthropic\.|Anthropic\()|client\.messages\.create\b")),
+    # NB: a BARE `invoke(`/`ainvoke(` matched any `registry.invoke(...)` / WS test
+    # helper and mislabeled it as an LLM call. Require an llm/chain/model/agent
+    # receiver so only real LangChain LLM invocations match.
     ("llm_call_sites", "langchain",
-     re.compile(r"\b(ChatOpenAI|ChatAnthropic|ChatGoogleGenerativeAI|HuggingFaceHub|invoke|ainvoke)\s*\(")),
+     re.compile(r"\b(?:ChatOpenAI|ChatAnthropic|ChatGoogleGenerativeAI|HuggingFaceHub)\s*\(|\b(?:chain|llm|model|agent|runnable)\.(?:invoke|ainvoke)\s*\(")),
     ("llm_call_sites", "litellm",
      re.compile(r"\blitellm\.completion\b|\blitellm\.acompletion\b")),
     ("llm_call_sites", "ollama",
@@ -116,6 +119,7 @@ COMPONENT_FROM_CATEGORY = {
 def scan(root: Path) -> dict:
     out: dict[str, list[dict]] = {k: [] for k in COMPONENT_FROM_CATEGORY}
     component_hits: dict[str, int] = {v: 0 for v in COMPONENT_FROM_CATEGORY.values()}
+    files_scanned = 0
 
     for f in root.rglob("*"):
         if not f.is_file():
@@ -128,6 +132,7 @@ def scan(root: Path) -> dict:
             lines = f.read_text(errors="ignore").splitlines()
         except OSError:
             continue
+        files_scanned += 1
         rel = str(f.relative_to(root))
         for lineno, line in enumerate(lines, 1):
             for category, label, pat in RULES:
@@ -148,6 +153,12 @@ def scan(root: Path) -> dict:
     ]
     components.sort(key=lambda x: -x["count"])
     return {
+        "_meta": {
+            "files_scanned": files_scanned,
+            "note": "An empty category means the pattern was NOT MATCHED in the "
+                    "scanned files — it does NOT mean 'not scanned' or 'safe by "
+                    "design'. files_scanned confirms the scan ran.",
+        },
         "components": components,
         **out,
     }

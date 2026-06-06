@@ -54,9 +54,25 @@ Read the relevant `<tip>` for this vuln category. If it applies clearly,
 the verdict is `INVALID (KNOWN_REJECTION_PATTERN)` and the tip id is
 recorded.
 
+### Step 4.5 — Chain findings (`vuln_type = CHAIN`)
+
+For a chain, the dispute is resolved **per link** and the chain follows the
+weakest link:
+
+- Re-read every link's evidence and every `edge_proof`. If the defender broke a
+  link with code, the chain is `FP` — but check whether a surviving prefix is
+  still `CONFIRMED` as its own single finding (downgrade, don't discard silently).
+- `final_confidence` for the chain = `min(link confidences)` after dispute
+  adjustments, then apply Step 6 priority boost once (not per link).
+- Score it with the **chained-CVSS** posture in Step 5.
+
 ### Step 5 — CVSS scoring (only when `CONFIRMED`)
 
 Open `skills/04-validate/cvss-scoring.md`. Compute:
+
+**For chains**, use the §"Chained vulnerability scoring" section: exploitability
+metrics (AV/AC/PR/UI) from the **entry** link, impact (C/I/A) + Scope from the
+**terminal** link (host/sandbox-crossing terminals are `S:C`).
 
 - AV (Attack Vector): network / local / physical
 - AC (Attack Complexity): low / high
@@ -85,12 +101,19 @@ if cwe in {CWE-863, CWE-78, CWE-22, CWE-59}: base += 0.05
 if subclass == "scope-self-escalation":  base += 0.10
 if subclass == "sandbox-escape":         base += 0.10
 
+# Chain bonus — a CONFIRMED chain reaching a critical terminal (RCE/LPE/
+# host-escape) is the highest-yield class empirically (9/13 Critical-13).
+if vuln_type == "CHAIN" and terminal_impact in {RCE, LPE, SANDBOX_ESCAPE}:
+    base += 0.10
+
 # Hard ceiling
 final_confidence = min(base, 1.0)
 ```
 
-Total agent priority boost caps at +0.25. If defender verdict is
-`REBUTTED`, **skip all agent boosts** — defender is authoritative.
+Total agent priority boost caps at +0.35 (the +0.10 chain bonus stacks on the
++0.25 class/CWE/subclass ceiling). The `final_confidence = min(base, 1.0)` hard
+ceiling still applies. If defender verdict is `REBUTTED`, **skip all agent
+boosts** — defender is authoritative.
 
 ## Final verdict
 

@@ -14,7 +14,7 @@ rules:
   - id: incomplete-fix-comment-self-disclosed
     message: "Source comment self-discloses an incomplete fix / bypass. Anchor for Phase 3 read."
     severity: WARNING
-    languages: [python, typescript, javascript, generic]
+    languages: [generic]
     metadata:
       cwe: "CWE-1395"
       confidence: HIGH
@@ -24,7 +24,7 @@ rules:
   - id: incomplete-fix-ghsa-citation
     message: "Source cites a prior GHSA id — patch-neighborhood read needed (Pattern A/B)."
     severity: WARNING
-    languages: [python, typescript, javascript, generic]
+    languages: [generic]
     metadata:
       cwe: "CWE-1395"
       confidence: MEDIUM
@@ -34,7 +34,7 @@ rules:
   - id: incomplete-fix-cve-citation
     message: "Source cites a CVE id — check whether the neighborhood is fully covered (Pattern A)."
     severity: INFO
-    languages: [python, typescript, javascript, generic]
+    languages: [generic]
     metadata:
       cwe: "CWE-1395"
       confidence: LOW
@@ -89,7 +89,7 @@ rules:
   - id: per-vector-policy-keyword-py
     message: "A workspace-policy keyword appears here — enumerate every file enforcing it (Pattern E)."
     severity: WARNING
-    languages: [python, typescript, javascript, generic]
+    languages: [generic]
     metadata:
       cwe: "CWE-1395"
       confidence: LOW
@@ -99,7 +99,7 @@ rules:
   - id: incomplete-fix-todo-or-fixme-with-cve-or-ghsa
     message: "TODO / FIXME comment that references CVE / GHSA — strong incomplete-fix anchor."
     severity: WARNING
-    languages: [python, typescript, javascript, generic]
+    languages: [generic]
     metadata:
       cwe: "CWE-1395"
       confidence: HIGH

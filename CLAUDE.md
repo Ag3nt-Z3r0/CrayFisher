@@ -134,9 +134,12 @@ clone → detect_stack.py
             │     ↓
             │  Phase 1: + architecture_map.py + agent_trust_graph.py
             │  Phase 2: agent-frameworks/defaults/trust-layer/incomplete-fix
-            │           Semgrep rules first; web rules only on non-agent files
+            │           + chain-primitives Semgrep rules first; web rules
+            │           only on non-agent files
             │  Phase 3: ai-agent-flows.md (A1–A10) primary
+            │           → exploit-chaining.md (3-C) composes chains last
             │  Phase 4: agent policies + agent-default-checks gate
+            │           + exploit-chain policy for CHAIN findings
             │
             └─ is_agent_target = false
                   ↓
@@ -191,10 +194,21 @@ python tools/file_read.py <file> <line> --context 15
 |---|---|
 | 3-A | [skills/03-taint/source-sink-trace.md](skills/03-taint/source-sink-trace.md) |
 | 3-B | [skills/03-taint/ai-agent-flows.md](skills/03-taint/ai-agent-flows.md) |
+| 3-C | [skills/03-taint/exploit-chaining.md](skills/03-taint/exploit-chaining.md) |
 
 When `is_agent_target = true`, 3-B is the **primary** skill (A1–A10 patterns).
 3-A applies to non-agent entry points only. When `is_agent_target = false`,
 3-A is primary and 3-B is skipped.
+
+3-C runs **last** in every mode: it consumes the primitives that 3-A/3-B/Semgrep
+produced and **composes them into critical chains** (RCE, LPE, sandbox escape,
+credential reuse). This is how CrayFisher reaches CVSS-critical bugs that no
+single source→sink trace reveals — empirically 9 of the OpenClaw Critical-13 are
+multi-step escalation chains. Vocabulary + canonical chain templates:
+[skills/00-meta/critical-chain-catalog.md](skills/00-meta/critical-chain-catalog.md);
+gate: [skills/04-validate/policies/exploit-chain.md](skills/04-validate/policies/exploit-chain.md).
+Chaining **raises** the evidence bar (every link AND every edge must be cited),
+so it does not increase the FP rate.
 
 ```bash
 python tools/file_read.py <file> <line> --context 20
@@ -234,7 +248,7 @@ Output path is always `reports/<repo-name>/`.
 | `find_entries.py` | `python tools/find_entries.py <path>` | `entries[].{type,file,line,match}` |
 | `architecture_map.py` | `python tools/architecture_map.py <path>` | `components[]`, `llm_call_sites[]`, `tool_registry[]`, `memory_stores[]`, `sub_agent_spawners[]`, `sandbox_sites[]` |
 | `agent_trust_graph.py` | `python tools/agent_trust_graph.py <path>` | `nodes[]`, `edges[]` (each edge has `from_layer`, `to_layer`) |
-| `semgrep_run.py` | `python tools/semgrep_run.py <path>` | `findings[].{rule_id,file,line,vuln_type,snippet}` |
+| `semgrep_run.py` | `python tools/semgrep_run.py <path>` | `findings[].{rule_id,file,line,vuln_type,chain_primitive,snippet}` |
 | `file_read.py` | `python tools/file_read.py <file> <line>` | `content` (line-numbered) |
 | `osv_lookup.py` | `python tools/osv_lookup.py <pkg> <eco>` | `vuln_count`, `vulns[]` |
 | `ghsa_lookup.py` | `python tools/ghsa_lookup.py <pkg>` | offline seed hits + online GHSA results |
@@ -260,6 +274,7 @@ Ranked by Agent-Zero-DB empirical weight. P0 = top quartile of the corpus
 
 | Class | CWE | OWASP-LLM | Weight | Primary methods |
 |---|---|---|---|---|
+| **Exploit Chain (RCE/LPE)** | CWE-863/269/22/59/78/918 (composed) | LLM06/LLM01 | **P0** | Chaining (3-C) — compose primitives |
 | Excessive Agency | CWE-250/269 | LLM06 | **P0** | Trust graph + Manual |
 | Prompt Injection (general) | CWE-1427 | LLM01 | **P0** | Semgrep + Taint + Manual |
 | Tool Result Injection | CWE-1427 | LLM01 | **P0** | Taint (A3) |

@@ -168,9 +168,9 @@ rules:
       cwe: "CWE-1427"
       confidence: HIGH
     pattern-either:
-      - pattern: $CLIENT.chat.completions.create({..., messages: [..., {role: "user", content: req.$X}, ...], ...})
-      - pattern: $CLIENT.chat.completions.create({..., messages: [..., {role: "system", content: req.$X}, ...], ...})
-      - pattern: $CLIENT.chat.completions.create({..., messages: [..., {role: "user", content: req.body.$X}, ...], ...})
+      - pattern: '$CLIENT.chat.completions.create({..., messages: [..., {role: "user", content: req.$X}, ...], ...})'
+      - pattern: '$CLIENT.chat.completions.create({..., messages: [..., {role: "system", content: req.$X}, ...], ...})'
+      - pattern: '$CLIENT.chat.completions.create({..., messages: [..., {role: "user", content: req.body.$X}, ...], ...})'
 
   - id: js-prompt-injection-anthropic
     message: "Prompt Injection: external data inserted into Anthropic API prompt (CWE-1427)"
@@ -180,9 +180,9 @@ rules:
       cwe: "CWE-1427"
       confidence: HIGH
     pattern-either:
-      - pattern: $CLIENT.messages.create({..., system: req.$X, ...})
-      - pattern: $CLIENT.messages.create({..., messages: [..., {role: "user", content: req.$X}, ...], ...})
-      - pattern: $CLIENT.messages.create({..., system: req.body.$X, ...})
+      - pattern: '$CLIENT.messages.create({..., system: req.$X, ...})'
+      - pattern: '$CLIENT.messages.create({..., messages: [..., {role: "user", content: req.$X}, ...], ...})'
+      - pattern: '$CLIENT.messages.create({..., system: req.body.$X, ...})'
 
   - id: js-prompt-injection-langchain
     message: "Prompt Injection: unvalidated external input passed to a LangChain chain/agent (CWE-1427)"
@@ -194,8 +194,8 @@ rules:
     pattern-either:
       - pattern: $CHAIN.invoke(req.$X)
       - pattern: $CHAIN.invoke(req.body.$X)
-      - pattern: $AGENT.invoke({input: req.$X})
-      - pattern: $AGENT.invoke({input: req.body.$X})
+      - pattern: '$AGENT.invoke({input: req.$X})'
+      - pattern: '$AGENT.invoke({input: req.body.$X})'
 
   - id: js-llm-output-eval
     message: "LLM Output Execution: LLM response executed as code without validation (CWE-1427)"
@@ -216,10 +216,12 @@ rules:
     metadata:
       cwe: "CWE-1427"
       confidence: MEDIUM
-    pattern-either:
-      - pattern: server.tool($NAME, $SCHEMA, async ($ARGS) => { ... eval(...) ... })
-      - pattern: server.tool($NAME, $SCHEMA, async ($ARGS) => { ... exec(...) ... })
-      - pattern: server.tool($NAME, $SCHEMA, async ($ARGS) => { ... child_process.$FUNC(...) ... })
+    patterns:
+      - pattern-inside: 'server.tool($NAME, $SCHEMA, async ($ARGS) => { ... })'
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: exec(...)
+          - pattern: child_process.$FUNC(...)
 
   # ── DoS / Resource Exhaustion ────────────────────────────────────────
   - id: js-dos-regex-user-input

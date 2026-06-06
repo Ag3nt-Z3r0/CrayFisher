@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  vuln-agent Troubleshooting Log Schema
+  CrayFisher Troubleshooting Log Schema
 
   Records issues encountered during a scan.
   Filename: troubleshooting/<repo-name>_<YYYYMMDD>_<issue-type>.xml

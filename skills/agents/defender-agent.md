@@ -55,6 +55,27 @@ skills/04-validate/policies/<vuln_type>.md
 | **CONTEXT_WINDOW_ATTACK** | context-window-attacks.md |
 | **MEMORY_POISONING** | prompt-injection.md |
 | **INCOMPLETE_FIX** | incomplete-fix.md |
+| **CHAIN** | exploit-chain.md |
+
+## Chain findings (`vuln_type = CHAIN`) — weakest-link rebuttal
+
+A chain is only as strong as its weakest link. Rebut it the cheap way first:
+
+1. Read `exploit-chain.md`. For **each** link, verify its cited code; for **each**
+   adjacency, verify the `edge_proof` actually connects link N's product to link
+   N+1's precondition (catalog §5).
+2. The verdict is **`REBUTTED`** the moment *any one* of these holds:
+   - a link's cited code does not show the claimed primitive;
+   - an `edge_proof` does not actually connect (precondition not provided);
+   - any `<not_reportable>` condition in `exploit-chain.md` applies to a link;
+   - the terminal is not a catalog §3 critical sink.
+   You do **not** need to disprove every link — one broken link rebuts the chain.
+3. If every link and edge holds, verdict is `CONFIRMED`; if links hold but the
+   terminal impact is reduced (e.g., LPE only for an already-authenticated tier),
+   verdict is `PARTIAL`.
+
+When you REBUT a chain, also report which surviving prefix (if any) still stands
+as a single finding, so it is not lost.
 
 ## Procedure (per finding)
 
