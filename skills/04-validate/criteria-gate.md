@@ -19,6 +19,27 @@ When `is_agent_target = true` (from `tools/detect_stack.py`), criterion
 and criterion ⑤ uses `tools/ghsa_lookup.py` instead of (or in addition
 to) `osv_lookup.py`.
 
+### Chain findings (`vuln_type = CHAIN`)
+
+A chain is gated as a composition, not a single sink. Run the five criteria on
+**every link** (① reachability and ③ attacker-control must hold for the *entry*
+link; each intermediate link's product must reach the next), then add a
+composition gate:
+
+- **① (entry link)** — the entry link is attacker-reachable over a public
+  interface; cite the entry point + trust layer.
+- **③ (each link)** — the value driving each link is attacker-controllable *or*
+  is the proven product of the prior link.
+- **④ (terminal + composition)** — use
+  [policies/exploit-chain.md](policies/exploit-chain.md): every link cited, every
+  `edge_proof` connects, terminal is a critical sink (catalog §3). ④ fails if any
+  `<not_reportable>` condition applies to **any** link (weakest link).
+- **② / ⑤** — every gate on the path is default-permissive (②); the chain as a
+  whole is not a known-CVE duplicate (⑤).
+
+The first failed criterion on any link drops the chain (keep the proven prefix as
+its own single finding).
+
 ---
 
 ### ① Can external input actually reach this code path?

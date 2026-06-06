@@ -104,9 +104,12 @@ python tools/semgrep_run.py <local_path>
 ```
 
 Rule load order on agent targets: `agent-frameworks.yaml`,
-`agent-defaults.yaml`, `trust-layer-promotion.yaml`,
+`agent-defaults.yaml`, `trust-layer-promotion.yaml`, `chain-primitives.yaml`,
 `incomplete-fix-heuristics.yaml`, then generic `js-vuln.yaml` /
 `python-vuln.yaml` on files the trust graph marks as agent-irrelevant.
+
+`chain-primitives.yaml` matches carry `metadata.chain_primitive: <capability>` —
+record each as a primitive on its finding for the Step 7 capability graph.
 
 For each finding, answer four questions:
 
@@ -134,6 +137,27 @@ python tools/incomplete_fix_scan.py <local_path>
 For every commit / file the tool flags as an Agent-Zero-DB pattern A–E
 match, register a candidate with `vuln_type = INCOMPLETE_FIX`.
 
+### Step 7 — Exploit chaining (Phase 3-C, runs **last**)
+
+Single moderate findings are not the goal — **critical chains are.** After
+Steps 3–6 produce primitives, follow
+[`../03-taint/exploit-chaining.md`](../03-taint/exploit-chaining.md):
+
+1. Tag every surviving finding with its primitive(s) from
+   [`../00-meta/critical-chain-catalog.md`](../00-meta/critical-chain-catalog.md)
+   §2 → fill `finding.primitives[]`.
+2. Build the capability graph; add proven environment facts (exec locations,
+   `sys.path`/`PYTHONPATH`, co-resident dangerous tools, env passthrough).
+3. Search every attacker-reachable primitive → a critical terminal sink
+   (catalog §3), matching templates C1–C8 as hypotheses.
+4. For each sound path (every link AND every edge cited), emit a `CHAIN`
+   finding into `chains[]` with `confidence_base = min(link confidences)`.
+
+**Do not lower the evidence bar.** A chain needs N link citations **plus** N−1
+edge proofs. Unproven link/edge → break the chain, keep the proven prefix as its
+own finding. Keep the underlying single findings too (defender rebuts links
+independently).
+
 ## Drop criteria (do not report)
 
 - Cannot trace source → sink with code citations at every hop.
@@ -157,9 +181,10 @@ match, register a candidate with `vuln_type = INCOMPLETE_FIX`.
   "findings": [
     {
       "id": "FIND-001",
-      "vuln_type": "SQLI|CMDI|PATH_TRAVERSAL|SSRF|XSS|DOS|AUTH_BYPASS|CORS|CRYPTO|DESER|LOGIC_BUG|PROMPT_INJECTION|TOOL_RESULT_INJECTION|MEMORY_POISONING|MULTI_AGENT_ESCALATION|EXCESSIVE_AGENCY|MCP_TOOL_POISONING|AGENT_AUTHZ|SANDBOX_ESCAPE|SUPPLY_CHAIN_PLUGIN|CONTEXT_WINDOW_ATTACK|INCOMPLETE_FIX",
+      "vuln_type": "SQLI|CMDI|PATH_TRAVERSAL|SSRF|XSS|DOS|AUTH_BYPASS|CORS|CRYPTO|DESER|LOGIC_BUG|PROMPT_INJECTION|TOOL_RESULT_INJECTION|MEMORY_POISONING|MULTI_AGENT_ESCALATION|EXCESSIVE_AGENCY|MCP_TOOL_POISONING|AGENT_AUTHZ|SANDBOX_ESCAPE|SUPPLY_CHAIN_PLUGIN|CONTEXT_WINDOW_ATTACK|INCOMPLETE_FIX|CHAIN",
       "vuln_class": "A1|A2|A3|A4|A5|A6|A7|A8|A9|A10|null",
       "title": "<one-line summary>",
+      "primitives": ["arbitrary-write", "path-control"],
       "file": "<sink file>",
       "line": 0,
       "source": {
@@ -185,9 +210,39 @@ match, register a candidate with `vuln_type = INCOMPLETE_FIX`.
       "semgrep_rule": "<rule_id or null>",
       "incomplete_fix_of": "<GHSA-id or null>"
     }
+  ],
+  "chains": [
+    {
+      "id": "CHAIN-001",
+      "title": "<one-line critical-impact summary>",
+      "template": "C1|C2|C3|C4|C5|C6|C7|C8|null",
+      "terminal_impact": "RCE|LPE|CRED_REUSE|SANDBOX_ESCAPE|IRREVERSIBLE_ACTION",
+      "entry_link": "FIND-003",
+      "terminal_link": "FIND-007",
+      "links": [
+        {
+          "find_id": "FIND-003",
+          "primitive": "bounded-write",
+          "precondition": "<what attacker needs>",
+          "provides": "<product>",
+          "evidence": "<file>:<line> → \"<code>\"",
+          "edge_proof": "<file>:<line> → \"<code>\" (product→next precondition) | null"
+        }
+      ],
+      "composition_proven": true,
+      "attacker_reachable": true,
+      "human_gate_present": false,
+      "cwe_chain": ["CWE-22", "CWE-94"],
+      "owasp_class": "LLM06",
+      "confidence_base": 0.70
+    }
   ]
 }
 ```
+
+`chains[]` is emitted only by Step 7; `confidence_base` for a chain is
+`min(link confidences)` (weakest link). See
+[`../03-taint/exploit-chaining.md`](../03-taint/exploit-chaining.md).
 
 `confidence_base` baselines:
 

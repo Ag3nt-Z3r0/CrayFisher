@@ -9,7 +9,7 @@ def main():
     parser.add_argument("--dest", default=None)
     args = parser.parse_args()
 
-    dest = args.dest or tempfile.mkdtemp(prefix="vuln-agent-")
+    dest = args.dest or tempfile.mkdtemp(prefix="crayfisher-")
     result = subprocess.run(
         ["git", "clone", "--depth=1", args.url, dest],
         capture_output=True, text=True

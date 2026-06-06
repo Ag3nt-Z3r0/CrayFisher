@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Tool/skill gaps surfaced during the exploit-chaining dogfood validation
+  (validation/verdict.md). Targets: synthetic arms A/B + OpenClaw src/gateway.
+  Filename: openclaw_20260606_tool-gaps.xml
+-->
+<troubleshooting>
+
+  <issue>
+    <timestamp>2026-06-06T00:00:00+09:00</timestamp>
+    <type>tool-error</type>
+    <source>tools/semgrep_run.py</source>
+    <repo>https://github.com/openclaw/openclaw</repo>
+    <summary>The `snippet` field is mis-captured — every fixture finding reported snippet "requires login" instead of the actual sink line.</summary>
+    <description>
+      On arms A and B the recon agent received findings whose `snippet` was the
+      string "requires login" rather than the cited code (e.g. server.ts:25
+      `fs.writeFileSync(dest, content);`). The agent had to open the file to
+      recover the real line, defeating the purpose of the snippet. semgrep's
+      `extra.lines` is not being extracted/aligned to the matched line.
+    </description>
+    <reproduction>
+      python tools/semgrep_run.py /tmp/cf-fixtures/armA-mcp
+      → finding rule_id=chain-arbitrary-write-ts file=server.ts line=25
+        snippet="requires login"   (wrong; real line is fs.writeFileSync(...))
+    </reproduction>
+    <root_cause>
+      semgrep_run.py:70 reads r["extra"]["lines"] but the value can be a
+      neighboring/cached string under --no-rewrite-rule-ids / multiline matches;
+      no re-read of the matched line range.
+    </root_cause>
+    <resolution>
+      Prefer the matched line range (start.line..end.line) and, if `extra.lines`
+      is empty/mismatched, fall back to reading the file at the cited line.
+    </resolution>
+    <skill_update_needed>false</skill_update_needed>
+    <skill_file>tools/semgrep_run.py</skill_file>
+    <update_note>Fix snippet extraction; this is a code fix, not a skill change.</update_note>
+  </issue>
+
+  <issue>
+    <timestamp>2026-06-06T00:00:00+09:00</timestamp>
+    <type>scan-miss</type>
+    <source>tools/agent_trust_graph.py</source>
+    <repo>https://github.com/openclaw/openclaw</repo>
+    <summary>Returns empty (0 nodes/edges) on MCP targets — its promotion-edge model misses pure tool-arg → filesystem-write primitives.</summary>
+    <description>
+      On arm A (MCP server) and on src/gateway, agent_trust_graph emitted
+      nodes=[]/edges=[]/promotions=0. The strongest finding (CHAIN-001, an
+      unauthenticated tool-arg → arbitrary-write → RCE) had ZERO trust-graph
+      support. The graph models trust-LAYER promotions (system/user/tool) but
+      not the "untrusted MCP tool argument reaches a dangerous sink" boundary,
+      which is the most common agent RCE entry.
+    </description>
+    <reproduction>
+      python tools/agent_trust_graph.py /tmp/cf-fixtures/armA-mcp
+      → {"nodes":[],"edges":[]}  (no MCP tool-arg → sink edge)
+    </reproduction>
+    <root_cause>
+      Promotion-edge-centric design: it looks for low-trust content rising into
+      a higher-trust message layer, not for tool-arg → exec/write/path sinks.
+    </root_cause>
+    <resolution>
+      Add tool-handler-arg nodes (USER/TOOL tier) and edges from them to
+      file/exec/path sinks, so chaining (Phase 3-C) has graph support for
+      tool-arg-to-sink primitives.
+    </resolution>
+    <skill_update_needed>true</skill_update_needed>
+    <skill_file>tools/agent_trust_graph.py</skill_file>
+    <update_note>Model MCP/tool-arg → sink edges, not only trust-layer promotions.</update_note>
+  </issue>
+
+  <issue>
+    <timestamp>2026-06-06T00:00:00+09:00</timestamp>
+    <type>false-positive</type>
+    <source>rules/semgrep/chain-primitives.yaml</source>
+    <repo>https://github.com/openclaw/openclaw</repo>
+    <summary>chain-write-to-exec-location over-fires on comments/object-literals; chain-arbitrary-write-ts tags bounded-write and test-helper hardcoded writes.</summary>
+    <description>
+      In src/gateway, chain-write-to-exec-location (generic regex) matched a
+      JSDoc comment (config-reload.ts:39) and an object-literal field
+      (auth.ts:251); chain-arbitrary-write-ts matched hardcoded-content writes
+      in a live-test helper. On arm B it tagged server.ts:27 as arbitrary-write
+      though path.basename() (server.ts:25) makes it bounded-write. These are
+      acceptable as low-confidence "primitive hints" (recon must read to
+      confirm), but the noise is high on a large real tree.
+    </description>
+    <reproduction>
+      python tools/semgrep_run.py /tmp/crayfisher-.../src/gateway
+      → chain-write-to-exec-location @ config-reload.ts:39 (a comment)
+    </reproduction>
+    <root_cause>
+      Pure pattern-regex with no comment/context guard; arbitrary-write rule
+      cannot see a downstream basename() sanitizer.
+    </root_cause>
+    <resolution>
+      Keep confidence LOW (already), but add comment-exclusion to the
+      exec-location regex; document in semgrep-interpret.md that chain_primitive
+      tags are hints requiring a manual read (already the design, restate).
+    </resolution>
+    <skill_update_needed>true</skill_update_needed>
+    <skill_file>skills/02-static/semgrep-interpret.md</skill_file>
+    <update_note>State explicitly that chain_primitive tags are low-confidence hints; recon MUST read the sink and check for downstream sanitizers before drawing an edge.</update_note>
+  </issue>
+
+  <issue>
+    <timestamp>2026-06-06T00:00:00+09:00</timestamp>
+    <type>unexpected-output</type>
+    <source>tools/architecture_map.py</source>
+    <repo>https://github.com/openclaw/openclaw</repo>
+    <summary>Empty approval_gates/sandbox_sites give no "safe-vs-absent" signal; mislabels generic registry.invoke()/WS test helpers as langchain LLM calls.</summary>
+    <description>
+      On src/gateway, architecture_map returned tool_registry but empty
+      approval_gates/sandbox_sites/memory_stores/sub_agent_spawners, and tagged
+      generic registry.invoke(...) and WS test helpers (e.g.
+      tools-invoke-http.cron-regression.test.ts:123) as llm_call_sites=langchain.
+      An empty approval_gates list cannot distinguish "no gate exists" (a vuln)
+      from "tool not scanned", weakening criterion ②.
+    </description>
+    <reproduction>
+      python tools/architecture_map.py /tmp/crayfisher-.../src/gateway
+      → approval_gates:[]  llm_call_sites:[... mislabeled langchain ...]
+    </reproduction>
+    <root_cause>
+      Heuristic substring matching for LLM calls; no MCP/gateway approval-gate
+      patterns; absence encoded the same as "not present".
+    </root_cause>
+    <resolution>
+      Distinguish "scanned, none found" from "not scanned"; add MCP/gateway
+      approval-gate signatures; tighten llm_call_site heuristics to avoid test
+      helpers.
+    </resolution>
+    <skill_update_needed>false</skill_update_needed>
+    <skill_file>tools/architecture_map.py</skill_file>
+    <update_note>Code fix.</update_note>
+  </issue>
+
+  <issue>
+    <timestamp>2026-06-06T00:00:00+09:00</timestamp>
+    <type>scan-miss</type>
+    <source>tools/find_entries.py</source>
+    <repo>https://github.com/openclaw/openclaw</repo>
+    <summary>Returns 0 entries on MCP server.tool handlers and the gateway WS/HTTP control plane.</summary>
+    <description>
+      find_entries returned {"count":0,"entries":[]} for both the MCP fixtures
+      and src/gateway. The attacker entry surface (MCP `server.tool` handlers;
+      the WS connect handshake in server/ws-connection/message-handler.ts) was
+      located manually via grep. Missing entry enumeration weakens criterion ①.
+    </description>
+    <reproduction>
+      python tools/find_entries.py /tmp/cf-fixtures/armA-mcp   → count:0
+      python tools/find_entries.py /tmp/crayfisher-.../src/gateway → count:0
+    </reproduction>
+    <root_cause>
+      Entry patterns target HTTP route decorators / CLI argparse, not MCP
+      `server.tool(...)` registrations or gateway RPC/WS handlers.
+    </root_cause>
+    <resolution>
+      Add MCP tool-registration and WS/RPC handler patterns to find_entries.
+    </resolution>
+    <skill_update_needed>false</skill_update_needed>
+    <skill_file>tools/find_entries.py</skill_file>
+    <update_note>Code fix.</update_note>
+  </issue>
+
+  <issue>
+    <timestamp>2026-06-06T00:00:00+09:00</timestamp>
+    <type>config-error</type>
+    <source>validation/toolhealth.sh</source>
+    <repo>https://github.com/openclaw/openclaw</repo>
+    <summary>`ulimit -v 8GiB` killed semgrep on WSL2 (large virtual-address mapping) → false INCONCLUSIVE; fixed by using semgrep --max-memory instead.</summary>
+    <description>
+      The G-TOOLHEALTH probe's `ulimit -v 8388608` aborted semgrep even though
+      semgrep_run.py succeeded, producing a false INCONCLUSIVE on arms A/B.
+      ulimit -v bounds virtual address space, which semgrep maps large; the
+      correct memory bound is semgrep's own --max-memory (MB).
+    </description>
+    <reproduction>
+      (old) ulimit -v 8388608; semgrep scan ... → rc!=0 → INCONCLUSIVE
+      (new) semgrep scan --max-memory 4000 --quiet ... → FINDINGS, stderr empty
+    </reproduction>
+    <root_cause>Wrong memory knob for semgrep on this platform.</root_cause>
+    <resolution>Replaced ulimit -v with `--max-memory 4000 --quiet`; rely on `timeout` for wall-clock. Already applied.</resolution>
+    <skill_update_needed>false</skill_update_needed>
+    <skill_file>validation/toolhealth.sh</skill_file>
+    <update_note>Fixed in this run.</update_note>
+  </issue>
+
+  <!--
+    RESOLUTION LOG (2026-06-06): all six issues above were fixed and verified the
+    same day (deterministic re-run of each tool on the arm A/B fixtures and the
+    OpenClaw src/gateway clone; semgrep rule validation = 95 rules valid;
+    regression sanity confirmed pre-existing promotion/node output preserved, no
+    duplicate flood). See validation/verdict.md "Follow-ups #2 — DONE". The only
+    inherent residual is comment/prose false positives from the generic-regex
+    chain-write-to-exec-location rule, mitigated by its LOW-confidence-HINT
+    contract (recon must read the sink before drawing an edge).
+  -->
+
+</troubleshooting>

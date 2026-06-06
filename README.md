@@ -28,7 +28,16 @@ architecture_map + agent_trust_graph       (legacy web flow)
   ↓
 agent Semgrep rules → A1–A10 taint
   ↓
-agent + web policies (criteria-gate)
+exploit-chaining (3-C): compose primitives → RCE / LPE chains
+  ↓
+agent + web + exploit-chain policies (criteria-gate)
   ↓
 reports/<repo-name>/CVE_REPORT_*.md
 ```
+
+Beyond isolated findings, CrayFisher composes confirmed primitives into
+**critical chains** (RCE, LPE, sandbox escape) — the class that dominates the
+empirical Critical-13 — while requiring every link *and* every composition edge
+to carry a code citation, so chaining raises rather than lowers the evidence bar.
+See [skills/03-taint/exploit-chaining.md](skills/03-taint/exploit-chaining.md)
+and [skills/00-meta/critical-chain-catalog.md](skills/00-meta/critical-chain-catalog.md).

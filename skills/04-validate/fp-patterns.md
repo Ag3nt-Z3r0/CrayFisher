@@ -47,6 +47,35 @@ Do not apply "this probably exists".
 
 ---
 
+## Chain findings (`vuln_type = CHAIN`)
+
+A chain's confidence is **not** computed with the table above. It is the
+**weakest link**:
+
+```
+chain confidence = min(confidence of each link)   then apply edge adjustments
+```
+
+Edge adjustments (only when confirmed by reading the `edge_proof` code):
+
+| Condition | Adjustment |
+|---|---|
+| Every edge `product → precondition` proven in code | +0.05 |
+| Terminal link is host exec / write-to-exec-location | +0.10 |
+| An edge connects only "in principle" (no code linking the two) | **FP** — break the chain |
+| A link is a bounded-write treated as arbitrary-write w/o escape proof | **FP** — break the chain |
+
+A chain-specific FP (any of these → do not report the chain; keep the proven
+prefix as a single finding):
+
+- a link or edge lacks an `Evidence:`/`edge_proof` citation (speculative link);
+- a link assumes a capability the chain should earn (`logic-trusted-input`);
+- the terminal is display-only / public-read / DoS (no critical sink);
+- a link needs a trusted-actor action (`agent-authz-documented-elevation`);
+- a memory-write link is never read back (`memory-poisoning-no-readback`).
+
+See [policies/exploit-chain.md](policies/exploit-chain.md) for the full gate.
+
 ## Final verdict
 
 | Confidence | Action |

@@ -15,11 +15,18 @@ PATTERNS: list[tuple[str, str, re.Pattern]] = [
     # HTTP — FastAPI
     ("http_route", "fastapi",
      re.compile(r'@(?:app|router)\.(get|post|put|patch|delete)\s*\(\s*["\']([^"\']+)["\']')),
-    # MCP tool registration
+    # MCP tool registration (name may sit on the next line — full-text scan handles it)
     ("tool_handler", "mcp",
-     re.compile(r'server\.tool\s*\(\s*["\']([^"\']+)["\']')),
+     re.compile(r'(?:server|mcpServer|McpServer)\.tool\s*\(\s*["\']([^"\']+)["\']')),
     ("tool_handler", "mcp",
-     re.compile(r'\.setRequestHandler\s*\(\s*CallToolRequestSchema')),
+     re.compile(r'\.setRequestHandler\s*\(\s*(\w+RequestSchema)')),
+    ("tool_handler", "mcp",
+     re.compile(r'\.registerTool\s*\(\s*["\']([^"\']+)["\']')),
+    # Gateway RPC / WS control-plane handlers
+    ("rpc_handler", "gateway",
+     re.compile(r'\b(?:registerMethod|setMethodHandler|onMethod|handleMethod|addMethod)\s*\(\s*["\']([^"\']+)["\']')),
+    ("ws_handler", "websocket",
+     re.compile(r'\.(?:on|addEventListener)\s*\(\s*["\'](connection|message|connect)["\']')),
     # LangChain @tool
     ("tool_handler", "langchain",
      re.compile(r'@(?:langchain\.)?tool\b')),
@@ -44,24 +51,31 @@ def find_entries(root: Path) -> list[dict]:
             continue
         if any(p in f.parts for p in SKIP_DIRS):
             continue
-        if f.suffix not in {".py", ".ts", ".js", ".tsx", ".jsx"}:
+        if f.suffix not in {".py", ".ts", ".js", ".tsx", ".jsx", ".mjs"}:
             continue
         try:
-            lines = f.read_text(errors="ignore").splitlines()
+            text = f.read_text(errors="ignore")
         except OSError:
             continue
-        for lineno, line in enumerate(lines, 1):
-            for ep_type, source, pat in PATTERNS:
-                m = pat.search(line)
-                if m:
-                    results.append({
-                        "type": ep_type,
-                        "source": source,
-                        "match": m.group(0)[:80],
-                        "file": str(f.relative_to(root)),
-                        "line": lineno,
-                    })
-                    break
+        rel = str(f.relative_to(root))
+        # Full-text (multi-line) scan: a registration like `server.tool(\n  "name"`
+        # spans lines, so per-line matching misses it. \s* in the patterns spans
+        # newlines, so finditer over the whole file catches both styles.
+        seen: set[tuple] = set()
+        for ep_type, source, pat in PATTERNS:
+            for m in pat.finditer(text):
+                lineno = text.count("\n", 0, m.start()) + 1
+                key = (ep_type, rel, lineno)
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append({
+                    "type": ep_type,
+                    "source": source,
+                    "match": " ".join(m.group(0).split())[:80],
+                    "file": rel,
+                    "line": lineno,
+                })
     return results
 
 

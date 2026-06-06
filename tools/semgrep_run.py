@@ -33,6 +33,27 @@ def find_semgrep(project_root: str) -> str:
     return "semgrep"
 
 
+def extract_snippet(r: dict) -> str:
+    """Return the matched source text.
+
+    Semgrep's OSS tier sometimes puts the placeholder string "requires login"
+    in extra.lines (the real code needs a Pro login to render). When that
+    happens — or when lines is empty — re-read the matched line range from the
+    file so the snippet is always the actual code, not a placeholder.
+    """
+    lines = (r.get("extra", {}).get("lines", "") or "").strip()
+    if lines and lines.lower() != "requires login":
+        return lines
+    try:
+        start = r["start"]["line"]
+        end = r.get("end", {}).get("line", start)
+        with open(r["path"], errors="ignore") as fh:
+            src = fh.readlines()
+        return "".join(src[start - 1:end]).strip()
+    except (OSError, KeyError, IndexError):
+        return ""
+
+
 def run_semgrep(target: str, rules_dir: str, official: bool = False) -> list[dict]:
     script_dir = str(Path(__file__).parent.parent)
     semgrep = find_semgrep(script_dir)
@@ -67,7 +88,11 @@ def run_semgrep(target: str, rules_dir: str, official: bool = False) -> list[dic
             "severity": r.get("extra", {}).get("severity", "WARNING").upper(),
             "cwe": cwe_id,
             "vuln_type": CWE_MAP.get(cwe_id, "UNKNOWN"),
-            "snippet": r.get("extra", {}).get("lines", "").strip(),
+            # Chain-primitive tag from rules/semgrep/chain-primitives.yaml.
+            # None for ordinary rules; the recon agent (Phase 3-C, Step 7) drops
+            # non-null values straight into the capability graph.
+            "chain_primitive": meta.get("chain_primitive"),
+            "snippet": extract_snippet(r),
         })
 
     return findings

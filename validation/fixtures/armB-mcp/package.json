@@ -1,0 +1,9 @@
+{
+  "name": "note-keeper",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": { "note-keeper": "server.js" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

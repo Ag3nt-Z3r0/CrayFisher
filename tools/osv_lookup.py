@@ -23,10 +23,9 @@ def query_osv(package: str, ecosystem: str) -> dict:
                         "id": v.get("id"),
                         "summary": v.get("summary", "")[:120],
                         "published": v.get("published", ""),
-                        "cwe": [
-                            d.get("cweIds", [])
-                            for d in v.get("database_specific", {}).get("cwe_ids", [])
-                        ] if "database_specific" in v else [],
+                        # OSV stores CWE ids as a plain list of strings, e.g.
+                        # ["CWE-79", "CWE-89"], under database_specific.cwe_ids.
+                        "cwe": v.get("database_specific", {}).get("cwe_ids", []),
                     }
                     for v in vulns[:10]
                 ],

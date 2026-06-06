@@ -208,7 +208,7 @@ rules:
     pattern-either:
       - pattern: $CLIENT.messages.create(..., system=request.$X, ...)
       - pattern: $CLIENT.messages.create(..., system=f"...", ...)
-      - pattern: $CLIENT.messages.create(..., messages=[..., {"role": "user", "content": request.$X}, ...], ...)
+      - pattern: '$CLIENT.messages.create(..., messages=[..., {"role": "user", "content": request.$X}, ...], ...)'
       - pattern: $CLIENT.beta.messages.create(..., system=request.$X, ...)
 
   - id: python-prompt-injection-openai
@@ -219,8 +219,8 @@ rules:
       cwe: "CWE-1427"
       confidence: HIGH
     pattern-either:
-      - pattern: $CLIENT.chat.completions.create(..., messages=[..., {"role": "user", "content": request.$X}, ...], ...)
-      - pattern: $CLIENT.chat.completions.create(..., messages=[..., {"role": "system", "content": request.$X}, ...], ...)
+      - pattern: '$CLIENT.chat.completions.create(..., messages=[..., {"role": "user", "content": request.$X}, ...], ...)'
+      - pattern: '$CLIENT.chat.completions.create(..., messages=[..., {"role": "system", "content": request.$X}, ...], ...)'
 
   - id: python-prompt-injection-langchain
     message: "Prompt Injection: unvalidated external input passed to a LangChain chain/agent (CWE-1427)"
