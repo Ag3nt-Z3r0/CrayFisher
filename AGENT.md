@@ -479,6 +479,51 @@ the candidate matches an existing rejection pattern.
   </tip>
 
   <!-- ══════════════════════════════════════════════════════════
+       FALSE-NEGATIVE lessons (bugs we MISSED — inverse of a rejection)
+       ══════════════════════════════════════════════════════════ -->
+
+  <tip id="authz-policy-context-bypass-is-in-scope" category="agent-authorization" source="openclaw-confirmed-2026-06" count="1">
+    <reject_reason>
+      We MISSED 3 confirmed openclaw criticals (9.9 cron toolsAllow scope-loss,
+      9.9 Teams message.action authz bypass, 8.5 node.invoke exec-param) by
+      framing veins too architecturally and over-applying the product's own
+      SECURITY.md exclusions.
+    </reject_reason>
+    <detail>
+      openclaw's #1 critical class (CWE-863) is a FEATURE-LEVEL authorization /
+      policy-context bypass: a LOWER-privilege caller (cron-but-not-exec scope,
+      operator.write-not-admin, non-owner sender, narrow tool policy) reaches a
+      HIGHER-privilege action through a dispatch / scheduling / delegation /
+      cross-session path that DROPS the privilege/scope/owner check. These are
+      NOT "prompt-injection-only" and NOT "operator-intended local features" —
+      the boundary crossed is the tool-authorization / approval / policy boundary,
+      which IS in scope. Concretely: (a) a deferred/isolated run (cron, hooks,
+      reminders, sub-agents) that does not CAP its tool surface to the creating
+      caller; (b) a channel/plugin message.action (group/member/role mutation,
+      send-as-other, delete) that does not self-check senderIsOwner/operator.admin
+      after the gateway forces senderIsOwner=false; (c) a node.invoke whose
+      exec-relevant params (command/launch/profile/cwd/env) come from the caller
+      instead of operator-owned config (no node-invoke-policy clamp).
+    </detail>
+    <lesson>
+      1. Do NOT dismiss channel/tool/cron/node actions as out-of-scope. For each
+      privileged ACTION, find the per-handler owner/admin/scope check and prove
+      it is PRESENT (cite the line) before clearing it. Compare every channel's
+      action handler against the ONE that has the guard (the fixed sibling).
+      2. For every deferred/isolated/delegated execution, read the RUN-TIME path
+      and confirm the tool/scope surface is capped to the CREATOR, not the stored
+      payload alone.
+      3. Treat "lower-priv caller -> dispatch that drops the check -> privileged
+      action" as a first-class P0 vein, not a sub-case of prompt injection.
+      4. When a product's SECURITY.md excludes a class, scope the exclusion
+      NARROWLY (e.g. "Teams WEBHOOK SIGNATURE" excludes only signatures, not the
+      message.action authz surface). Do not let an exclusion blanket a whole
+      feature.
+    </lesson>
+    <skill_update>skills/03-taint/ai-agent-flows.md — add an A-pattern for deferred-run/dispatch authz-context loss; skills/04-validate/policies/agent-authorization.md — per-action owner/admin gate checklist across sibling channels</skill_update>
+  </tip>
+
+  <!-- ══════════════════════════════════════════════════════════
        Template for new rejection reasons
        ══════════════════════════════════════════════════════════
   <tip id="<unique-id>" category="<dos|sqli|xss|logic|auth|mcp-tool-poisoning|excessive-agency|...>" source="<security-team-name>" count="1">

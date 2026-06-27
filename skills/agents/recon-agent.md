@@ -27,8 +27,16 @@ python tools/incomplete_fix_scan.py <local_path>
 python tools/file_read.py <file> <line> --context 20
 python tools/osv_lookup.py <package> <ecosystem>
 python tools/ghsa_lookup.py <package>
+python tools/ci_agent_scan.py <local_path>   # if .github/workflows/ exists
+python tools/diff_collect.py <local_path>    # change/PR/release review mode (1-C)
 grep -rn "<symbol>" <local_path> --include="*.py" --include="*.ts"
 ```
+
+**Entry mode.** If the INPUT names a base ref / PR / release (or asks to review
+recent changes), run [`../01-recon/diff-review.md`](../01-recon/diff-review.md)
+(Skill 1-C) first and scope the steps below to the diff — pay special attention
+to its **regression** candidates (a guard a commit removed). Otherwise scan the
+whole repo as usual.
 
 ## Procedure
 
@@ -136,6 +144,41 @@ python tools/incomplete_fix_scan.py <local_path>
 
 For every commit / file the tool flags as an Agent-Zero-DB pattern A–E
 match, register a candidate with `vuln_type = INCOMPLETE_FIX`.
+
+### Step 4.5 — Sharp edges (framework targets — footgun API designs)
+
+When the target is itself an agent **framework / library** (others build on it),
+also walk [`../02-static/sharp-edges.md`](../02-static/sharp-edges.md) (Skill
+2-C) over the public API surface: dangerous defaults, stringly-typed trust/
+approval, injectable mode selectors, silent-failure verifies. One unsafe default
+in a framework propagates into every downstream product.
+
+```bash
+grep -rn "DEFAULT_\|default=\|os.environ.get\|process.env" <path>
+grep -rn "interface .*Options\|class .*Config\|TypedDict\|pydantic" <path>
+```
+
+### Step 6.5 — Agentic CI injection (if `.github/workflows/` exists, both modes)
+
+```bash
+python tools/ci_agent_scan.py <local_path>
+```
+
+For every workflow the tool returns (it only emits workflows that wire an AI
+action), walk [`../03-taint/agentic-ci-injection.md`](../03-taint/agentic-ci-injection.md)
+vectors A–I against the captured context. Register each confirmed
+attacker-event → agent-prompt path as a candidate with `vuln_type =
+PROMPT_INJECTION` and a `ci_vector` note. A `pull_request_target` + head-checkout
++ agent path that reaches secrets is a chain entry link for Step 7.
+
+### Step 6.6 — Variant analysis on each confirmed finding (Phase 3-D)
+
+For every finding that survived its trace, follow
+[`../03-taint/variant-analysis.md`](../03-taint/variant-analysis.md): state the
+root cause, build an exact-match query, generalize, and **re-verify each sibling
+independently**. Emit confirmed variants as their own findings (they are fresh
+primitives for Step 7). When variants cluster, prefer one systemic finding over
+N near-duplicates.
 
 ### Step 7 — Exploit chaining (Phase 3-C, runs **last**)
 
