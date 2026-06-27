@@ -175,6 +175,45 @@ Each section gives:
   - `permission_mode = "bypassPermissions"`.
   - `allowedTools` left at the catch-all default.
 
+## Rust agent stack (rmcp / rig / swiftide / codex-rs)
+
+> CrayFisher's automated layer (detect_stack, find_entries, architecture_map,
+> agent_trust_graph, `rules/semgrep/rust-vuln.yaml`) covers Rust as of the Rust
+> support layer. The trust-graph tool-arg→sink edge only catches a param used
+> *directly* in the sink line; a one-hop indirection (`let cmd =
+> params.command; Command::new("sh").arg("-c").arg(cmd)`) is caught instead by
+> architecture_map (`sandbox_sites`) + the `rust-command-shell-c` Semgrep rule.
+> Read the handler body — do not rely on a single tool.
+
+- **Detect:** `rmcp` (official Rust MCP SDK), `#[tool]`/`#[tool_router]`/
+  `#[tool_handler]`, `ServerHandler`, `CallToolRequestParam`; `rig::`/`rig-core`;
+  `swiftide`; `codex_core`/`codex-rs`/`codex_protocol`; `async_openai`. Cargo.toml
+  deps are scanned in addition to `.rs` source.
+- **LLM call:** `async-openai` (`client.chat().create(...)`), `reqwest` to the
+  provider URL, `rig` completion model calls.
+- **Tool registration:** rmcp `#[tool]` methods on a `ServerHandler` impl,
+  registered via `#[tool_router]`. Tool args arrive as a deserialized struct
+  param (`params: SomeArgs`) — trace `params.<field>` into the body.
+- **Memory:** framework-specific (codex: rollout/session history files).
+- **Approval / sandbox:** this is the high-value surface for coding agents:
+  - **Approval policy** — `AskForApproval` (`Never`/`OnFailure`/`OnRequest`/
+    `UnlessTrusted`), `approval_policy`, `SafetyCheck`. Default value is the bug.
+  - **Sandbox** — `landlock`+`seccomp` (Linux), Seatbelt (macOS); look for
+    `sandbox_policy`, writable-root config, env passthrough, and the
+    `--dangerously-bypass`/full-access escape (out-of-scope for OpenAI bounty as
+    a *finding*, but its existence shapes the default-config threat model).
+- **High-yield grep targets (Codex CLI / coding-agent shaped):**
+  - `Command::new("sh").arg("-c").arg(...)` reached from a tool arg — cmdi.
+  - `fs::write` / `File::create` from a tool-supplied path escaping the
+    workspace root — apply_patch path traversal → write-to-exec-location chain.
+  - **MCP server entries auto-loaded from project-local config and launched
+    without approval** — the CVE-2025-61260 class; check for incomplete-fix /
+    variants since the `CODEX_HOME`/`.env` redirect fix.
+  - ANSI/control bytes in tool/model output rendered to the terminal — ToB T3
+    (already an RCE vector here); see
+    [tob-mcp-agent-attack-catalog.md](tob-mcp-agent-attack-catalog.md).
+  - `env(...)`/`envs(...)` on a `Command` carrying caller-influenced vars — C3.
+
 ---
 
 ## How to add a new framework

@@ -41,6 +41,21 @@ PATTERNS: list[tuple[str, str, re.Pattern]] = [
      re.compile(r'add_argument\s*\(\s*["\'](-{1,2}[\w-]+)["\']')),
     ("cli_command", "click",
      re.compile(r'@click\.(?:argument|option)\s*\(\s*["\']([^"\']+)["\']')),
+    # ── Rust ───────────────────────────────────────────────────────────
+    # MCP (rmcp) tool handler — the `#[tool]` macro marks an exposed tool fn
+    ("tool_handler", "rmcp",
+     re.compile(r'#\[tool(?:\(|\s*\])')),
+    # clap CLI — derive(Parser) struct + #[arg]/#[command] attrs
+    ("cli_command", "clap",
+     re.compile(r'#\[(?:arg|command)\b')),
+    ("cli_command", "clap-derive",
+     re.compile(r'#\[derive\([^)]*\bParser\b')),
+    # axum route: .route("/path", get(handler))
+    ("http_route", "axum",
+     re.compile(r'\.route\s*\(\s*"([^"]+)"\s*,\s*(?:get|post|put|patch|delete|any)\s*\(')),
+    # actix-web attribute routes: #[get("/path")]
+    ("http_route", "actix",
+     re.compile(r'#\[(?:get|post|put|patch|delete)\s*\(\s*"([^"]+)"')),
 ]
 
 
@@ -51,7 +66,7 @@ def find_entries(root: Path) -> list[dict]:
             continue
         if any(p in f.parts for p in SKIP_DIRS):
             continue
-        if f.suffix not in {".py", ".ts", ".js", ".tsx", ".jsx", ".mjs"}:
+        if f.suffix not in {".py", ".ts", ".js", ".tsx", ".jsx", ".mjs", ".rs"}:
             continue
         try:
             text = f.read_text(errors="ignore")

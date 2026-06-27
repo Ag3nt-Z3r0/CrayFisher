@@ -22,7 +22,10 @@ FRAMEWORK_SIGS: list[tuple[str, list[str]]] = [
     ("nextjs",          ['"next":', "from 'next/", 'from "next/']),
     ("django",          ["django.urls", "from django"]),
     ("mcp",             ["@modelcontextprotocol", "McpServer", "CallToolRequestSchema",
-                         "StdioServerTransport", "ListToolsRequestSchema"]),
+                         "StdioServerTransport", "ListToolsRequestSchema",
+                         # Rust MCP SDK (rmcp) — official rust-sdk + macros
+                         "rmcp", "#[tool_router", "#[tool_handler", "#[tool]",
+                         "ServerHandler", "CallToolRequestParam"]),
     ("langchain",       ["from langchain", "@langchain/", "langchain_core"]),
     ("llamaindex",      ["from llama_index", "llama-index"]),
     ("crewai",          ["from crewai", "CrewAI"]),
@@ -32,12 +35,21 @@ FRAMEWORK_SIGS: list[tuple[str, list[str]]] = [
     ("pydantic-ai",     ["from pydantic_ai", "pydantic-ai"]),
     ("semantic-kernel", ["semantic_kernel", "Microsoft.SemanticKernel"]),
     ("agno",            ["from agno.", "from phi.agent", "phidata"]),
+    # ── Rust agent frameworks / coding agents ──────────────────────────
+    ("rig",             ["use rig", "rig::", "rig-core"]),
+    ("swiftide",        ["use swiftide", "swiftide::", "swiftide ="]),
+    ("codex",           ["codex_core", "codex-rs", "codex_protocol",
+                         "use codex", "codex_mcp", "codex_exec"]),
+    # Rust LLM clients — not agent frameworks alone, but mark LLM surface.
+    ("async-openai",    ["async_openai", "async-openai"]),
 ]
 
 # Frameworks that flip the agent-first analysis branch downstream.
 AGENT_FRAMEWORKS: set[str] = {
     "mcp", "langchain", "llamaindex", "crewai", "autogen",
     "openai-agents", "openhands", "pydantic-ai", "semantic-kernel", "agno",
+    # Rust
+    "rig", "swiftide", "codex",
 }
 
 DEP_FILES = {
@@ -62,6 +74,16 @@ def scan(root: Path):
             continue
         if f.name in DEP_FILES:
             dep_files.append(str(f.relative_to(root)))
+            # Cargo.toml lists crate deps (rmcp, rig-core, async-openai, …) that
+            # never appear verbatim in .rs source — scan its text for sigs too.
+            if f.name == "Cargo.toml":
+                try:
+                    cargo_text = f.read_text(errors="ignore")
+                    for fw, sigs in FRAMEWORK_SIGS:
+                        if any(s in cargo_text for s in sigs):
+                            frameworks.add(fw)
+                except OSError:
+                    pass
 
         ext = f.suffix.lower()
         lang = LANG_EXT.get(ext)

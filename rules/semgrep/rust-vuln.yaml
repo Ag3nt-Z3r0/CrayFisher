@@ -1,0 +1,113 @@
+rules:
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Rust generic + agent sinks (codex-rs / rmcp / rig style coding agents).
+  #
+  # Kept to simple expression/statement patterns (Semgrep's Rust support is
+  # most reliable there; item/attribute-macro matching is avoided). Confidence
+  # is LOW/MEDIUM by design — each match is a HINT the recon agent must read to
+  # confirm taint. chain_primitive tags feed skills/03-taint/exploit-chaining.md.
+  # ─────────────────────────────────────────────────────────────────────
+
+  # ── Command injection (CWE-78) ─────────────────────────────────────────
+  - id: rust-command-shell-c
+    message: "std::process::Command spawns a shell with -c — if the final arg is attacker/LLM-influenced this is command injection (CWE-78). A coding agent's shell tool is the classic sink."
+    severity: WARNING
+    languages: [rust]
+    metadata:
+      cwe: "CWE-78"
+      owasp-llm: "LLM06"
+      confidence: MEDIUM
+      chain_primitive: exec-primitive
+    pattern-either:
+      - pattern: Command::new("sh").arg("-c").arg($X)
+      - pattern: Command::new("bash").arg("-c").arg($X)
+      - pattern: Command::new("sh").args($X)
+      - pattern: Command::new("bash").args($X)
+
+  - id: rust-command-arg-format
+    message: "Command argument built with format!() — interpolated values may be attacker-controlled (CWE-78). Verify the format args are not LLM/tool/CLI input."
+    severity: WARNING
+    languages: [rust]
+    metadata:
+      cwe: "CWE-78"
+      owasp-llm: "LLM06"
+      confidence: LOW
+      chain_primitive: exec-primitive
+    pattern-either:
+      - pattern: $CMD.arg(format!(...))
+      - pattern: Command::new(format!(...))
+
+  - id: rust-command-dynamic-program
+    message: "Command program name is non-literal — the executed binary itself is data-controlled (CWE-78). Trace $X to its source."
+    severity: WARNING
+    languages: [rust]
+    metadata:
+      cwe: "CWE-78"
+      owasp-llm: "LLM06"
+      confidence: LOW
+      chain_primitive: exec-primitive
+    patterns:
+      - pattern: Command::new($X)
+      - pattern-not: Command::new("...")
+
+  # ── Command env passthrough (chain primitive) ──────────────────────────
+  - id: rust-command-env-passthrough
+    message: "Command spawned with a caller-supplied environment — env-control → exec primitive (catalog C3) if an exec-relevant var (LD_PRELOAD, PATH, NODE_OPTIONS, …) reaches the child."
+    severity: INFO
+    languages: [rust]
+    metadata:
+      cwe: "CWE-184"
+      confidence: LOW
+      chain_primitive: env-control
+    pattern-either:
+      - pattern: $CMD.env($K, $V)
+      - pattern: $CMD.envs($M)
+      - pattern: $CMD.env_clear()
+
+  # ── Path traversal / arbitrary write (CWE-22) ──────────────────────────
+  - id: rust-fs-write-nonliteral
+    message: "fs::write to a non-literal path — arbitrary/bounded-write primitive (CWE-22). Chain candidate (catalog C2) if the path is attacker-influenced and reaches an exec location."
+    severity: WARNING
+    languages: [rust]
+    metadata:
+      cwe: "CWE-22"
+      confidence: LOW
+      chain_primitive: arbitrary-write
+    patterns:
+      - pattern-either:
+          - pattern: std::fs::write($P, $D)
+          - pattern: fs::write($P, $D)
+      - pattern-not: fs::write("...", $D)
+      - pattern-not: std::fs::write("...", $D)
+
+  - id: rust-file-create-nonliteral
+    message: "File::create on a non-literal path — write primitive (CWE-22). Verify the path base cannot be escaped (apply_patch / workspace write surface)."
+    severity: INFO
+    languages: [rust]
+    metadata:
+      cwe: "CWE-22"
+      confidence: LOW
+      chain_primitive: arbitrary-write
+    patterns:
+      - pattern-either:
+          - pattern: File::create($P)
+          - pattern: std::fs::File::create($P)
+      - pattern-not: File::create("...")
+
+  # ── SSRF (CWE-918) ─────────────────────────────────────────────────────
+  - id: rust-reqwest-dynamic-url
+    message: "Outbound HTTP to a non-literal URL — SSRF primitive (CWE-918). Chain candidate (catalog C7) toward cloud-metadata credential reuse."
+    severity: INFO
+    languages: [rust]
+    metadata:
+      cwe: "CWE-918"
+      confidence: LOW
+      chain_primitive: ssrf
+    patterns:
+      - pattern-either:
+          - pattern: reqwest::get($U)
+          - pattern: $CLIENT.get($U)
+          - pattern: $CLIENT.post($U)
+      - pattern-not: reqwest::get("...")
+      - pattern-not: $CLIENT.get("...")

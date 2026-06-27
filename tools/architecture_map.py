@@ -20,7 +20,7 @@ import argparse, json, re
 from pathlib import Path
 
 SKIP_DIRS = {".git", "node_modules", ".venv", "dist", "build", "__pycache__", "vendor", "target"}
-SCAN_EXTS = {".py", ".ts", ".js", ".tsx", ".jsx", ".mjs"}
+SCAN_EXTS = {".py", ".ts", ".js", ".tsx", ".jsx", ".mjs", ".rs"}
 
 # Each rule: (category, label, regex). One file site per match line.
 RULES: list[tuple[str, str, re.Pattern]] = [
@@ -102,6 +102,20 @@ RULES: list[tuple[str, str, re.Pattern]] = [
      re.compile(r"['\"`]MEDIA:\s*\$|['\"`]MEDIA:\s*\{")),
     ("trust_label_sites", "trusted-string",
      re.compile(r"['\"`]trusted['\"`]\s*:|trustLevel\s*[:=]")),
+
+    # ── Rust (rmcp / async-openai / codex-style agents) ─────────────
+    ("llm_call_sites", "async-openai",
+     re.compile(r"\basync_openai\b|\.chat\(\)\.create\b|Client::with_config\b")),
+    ("tool_registry", "rmcp-tool",
+     re.compile(r"#\[tool(?:\(|\s*\])|#\[tool_router\b|\btool_router\b|\bServerHandler\b")),
+    ("sub_agent_spawners", "rust-agent-spawn",
+     re.compile(r"\bAgent::new\s*\(|\bspawn_agent\b|\bsubagent\b", re.I)),
+    ("sandbox_sites", "rust-command-exec",
+     re.compile(r"\bCommand::new\s*\(|\bprocess::Command\b")),
+    ("sandbox_sites", "rust-sandbox-tech",
+     re.compile(r"\blandlock\b|\bseccomp\b|\bseatbelt\b|\bsandbox_policy\b", re.I)),
+    ("approval_gates", "rust-approval",
+     re.compile(r"\bAskForApproval\b|\bapproval_policy\b|\brequire_approval\b|\bSafetyCheck\b|\bneeds_approval\b")),
 ]
 
 # Component-type roll-up (broad categories returned in components[]).

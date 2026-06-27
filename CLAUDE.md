@@ -1,8 +1,15 @@
 # CrayFisher — AI Agent Zero-Day Research Agent
 
 **Primary mission.** Find zero-days in AI Agent frameworks (MCP, LangChain,
-CrewAI, AutoGen, OpenHands, openai-agents, pydantic-ai, semantic-kernel, agno)
-and in products built on top of them.
+CrewAI, AutoGen, OpenHands, openai-agents, pydantic-ai, semantic-kernel, agno;
+Rust: rmcp, rig, swiftide, codex-rs) and in products built on top of them.
+
+**Language coverage.** The automated layer (detect_stack, find_entries,
+architecture_map, agent_trust_graph, Semgrep) covers Python, TypeScript/JS, and
+**Rust** (`rules/semgrep/rust-vuln.yaml`; rmcp/codex agent detection). Rust
+trust-graph edges only see a param used directly in a sink line — read the
+handler body for one-hop indirection (see the Rust section of
+[skills/knowledge/agent-frameworks-cheatsheet.md](skills/knowledge/agent-frameworks-cheatsheet.md)).
 
 **Fallback mission.** When `tools/detect_stack.py` reports `is_agent_target =
 false`, fall back to the legacy web-vuln flow with the existing 12 policies and

@@ -26,7 +26,7 @@ import argparse, json, re
 from pathlib import Path
 
 SKIP_DIRS = {".git", "node_modules", ".venv", "dist", "build", "__pycache__", "vendor", "target"}
-SCAN_EXTS = {".py", ".ts", ".js", ".tsx", ".jsx", ".mjs"}
+SCAN_EXTS = {".py", ".ts", ".js", ".tsx", ".jsx", ".mjs", ".rs"}
 
 # Higher trust = lower number. Promotion = bigger -> smaller.
 LAYER_RANK = {"SYSTEM": 1, "DEVELOPER": 2, "USER": 3, "TOOL": 4, "UNKNOWN": 9}
@@ -39,6 +39,8 @@ LAYER_SOURCES: list[tuple[str, re.Pattern]] = [
     # USER inputs (request/stdin/cli/env)
     ("USER", re.compile(r"\b(request\.|req\.|ctx\.request|event\.body|input\(\)|sys\.argv|process\.argv|formData|FormData|searchParams)")),
     ("USER", re.compile(r"\b(os\.environ|process\.env)\b")),
+    # Rust: env vars, CLI args
+    ("USER", re.compile(r"\b(?:std::)?env::(?:var|var_os|args|args_os)\s*\(|\bArgs::parse\s*\(")),
 
     # TOOL — tool results, external content, file reads, HTTP fetches
     ("TOOL", re.compile(r"\b(tool_result|tool_output|toolResult|tool\.run|run_tool|invoke_tool)\b")),
@@ -46,6 +48,8 @@ LAYER_SOURCES: list[tuple[str, re.Pattern]] = [
     ("TOOL", re.compile(r"\b(requests|httpx|aiohttp)\.(get|post|put|patch|delete)\b")),
     ("TOOL", re.compile(r"\.(read_text|readFile|readFileSync|read_bytes)\s*\(")),
     ("TOOL", re.compile(r"\b(subprocess\.run|subprocess\.check_output|child_process\.exec|os\.popen)\b")),
+    # Rust: reqwest, std::fs reads, Command output
+    ("TOOL", re.compile(r"\breqwest::(?:get|Client)\b|\bfs::read(?:_to_string)?\s*\(|\.output\s*\(\s*\)|\.send\s*\(\s*\)\s*\.await")),
 
     # DEVELOPER — config / settings / config files
     ("DEVELOPER", re.compile(r"\b(config|settings|CONFIG|SETTINGS)\.[a-zA-Z_][\w]*")),
@@ -66,6 +70,8 @@ LHS_TO_LAYER: list[tuple[re.Pattern, str]] = [
 # Simple Python/TS assignment pattern: `name = expr` (single-line).
 ASSIGN_PY = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$")
 ASSIGN_TS = re.compile(r"^(\s*)(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(.+?);?\s*$")
+# Rust: `let [mut] name[: Type] = expr;`
+ASSIGN_RS = re.compile(r"^(\s*)let\s+(?:mut\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=]+)?=\s*(.+?);?\s*$")
 
 
 def classify_rhs(rhs: str) -> str:
@@ -91,9 +97,9 @@ IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
 # `tool-arg-to-sink` edge (from_layer USER → a sink), the capability-graph seed
 # Phase 3-C chaining needs.
 SINK_PATTERNS: list[tuple[str, re.Pattern]] = [
-    ("arbitrary-write", re.compile(r"\bfs\.(?:writeFileSync|writeFile|appendFileSync|appendFile)\s*\(|\.write_text\s*\(|\.write_bytes\s*\(|\bopen\s*\([^)]*['\"][wa]")),
-    ("path-control",    re.compile(r"\bpath\.(?:resolve|join)\s*\(|\bos\.path\.join\s*\(")),
-    ("exec-primitive",  re.compile(r"\bchild_process\.(?:exec|spawn|execSync|spawnSync)\b|\bsubprocess\.(?:run|Popen|call|check_output)\s*\(|\bos\.system\s*\(|\beval\s*\(|\bexecFile\s*\(")),
+    ("arbitrary-write", re.compile(r"\bfs\.(?:writeFileSync|writeFile|appendFileSync|appendFile)\s*\(|\.write_text\s*\(|\.write_bytes\s*\(|\bopen\s*\([^)]*['\"][wa]|\bfs::write\s*\(|\bFile::create\s*\(")),
+    ("path-control",    re.compile(r"\bpath\.(?:resolve|join)\s*\(|\bos\.path\.join\s*\(|\bPath(?:Buf)?::(?:from|new)\s*\(")),
+    ("exec-primitive",  re.compile(r"\bchild_process\.(?:exec|spawn|execSync|spawnSync)\b|\bsubprocess\.(?:run|Popen|call|check_output)\s*\(|\bos\.system\s*\(|\beval\s*\(|\bexecFile\s*\(|\bCommand::new\s*\(")),
     ("deser-sink",      re.compile(r"\bpickle\.loads?\s*\(|\byaml\.load\s*\(")),
 ]
 # Tool-handler param lists (USER/TOOL-tier, attacker-influenced). [\s\S] spans
@@ -104,6 +110,8 @@ HANDLER_PARAMS: list[re.Pattern] = [
     re.compile(r"\.setRequestHandler\s*\([\s\S]{0,200}?async\s*\(\s*([A-Za-z_$][\w$]*)"),
     re.compile(r"@(?:langchain\.)?tool\b[\s\S]{0,80}?def\s+\w+\s*\(([^)]*)\)"),
     re.compile(r"@function_tool\b[\s\S]{0,80}?def\s+\w+\s*\(([^)]*)\)"),
+    # Rust rmcp: `#[tool] ... [async] fn name(&self, params: T) ...`
+    re.compile(r"#\[tool(?:\([^)]*\))?\s*\][\s\S]{0,160}?fn\s+\w+\s*\(([^)]*)\)"),
 ]
 
 
@@ -167,12 +175,18 @@ def scan(root: Path) -> dict:
             continue
         lines = raw_text.splitlines()
         is_ts = f.suffix in {".ts", ".tsx", ".js", ".jsx", ".mjs"}
+        is_rs = f.suffix == ".rs"
         rel = str(f.relative_to(root))
         var_layer: dict[str, tuple[str, int]] = {}  # var → (layer, lineno)
         file_nodes: list[dict] = []
         for lineno, raw in enumerate(lines, 1):
             line = raw.rstrip()
-            assign = ASSIGN_TS.match(line) if is_ts else ASSIGN_PY.match(line)
+            if is_rs:
+                assign = ASSIGN_RS.match(line)
+            elif is_ts:
+                assign = ASSIGN_TS.match(line)
+            else:
+                assign = ASSIGN_PY.match(line)
             if not assign:
                 continue
             _, var, rhs = assign.groups()
