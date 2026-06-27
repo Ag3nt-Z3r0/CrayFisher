@@ -44,6 +44,30 @@
       Verify: locate the approval logic and confirm it uses the
       description / name / metadata as a trust signal.
     </condition>
+    <condition id="tools-list-no-pinning">
+      LINE JUMPING (ToB, catalog T1). The client loads tool descriptions
+      from a `tools/list` response into the model context with NO
+      trust-on-first-use pinning and NO change-detection on updated
+      descriptions, so a malicious/compromised server injects instructions
+      that run BEFORE (and independent of) any per-tool approval gate.
+      Verify: locate where the client handles the `tools/list` /
+      `ListToolsRequest` response and inserts descriptions into the prompt
+      / context. Confirm there is no signature/TOFU pin and no diff check
+      on description changes. The injection executes at catalog-load time,
+      so per-call ask/allow gates do NOT mitigate it — do not accept "but
+      tools require approval" as a rebuttal.
+    </condition>
+    <condition id="ansi-in-model-visible-content">
+      ANSI DECEPTION (ToB, catalog T3). A string that is BOTH shown to the
+      user as a trust/approval signal AND fed to the model (tool
+      description, tool result, file/commit preview) is rendered without
+      stripping ANSI/control bytes, so a payload can be made invisible to
+      the human reviewer while the LLM still reads it.
+      Verify: locate the render/print path for tool descriptions or
+      results. Confirm no sanitization of `\x1b[` / `\x1b]` / `\e[` /
+      conceal (`\e[8m`) / cursor-move sequences before display. Severity is
+      amplified because human approval is defeated.
+    </condition>
   </reportable>
 
   <not_reportable>
@@ -73,7 +97,15 @@
     <item>Did you check whether any of `name`, `description`, or `inputSchema` is non-literal at any registration site?</item>
     <item>Did you confirm the approval logic doesn't read the description / name as a trust signal?</item>
     <item>Did you check whether the tool catalog can be mutated post-init by an external trigger?</item>
+    <item>(Client side) Did you check the `tools/list` handler for TOFU pinning / description change-detection (line jumping, T1)?</item>
+    <item>Did you check whether descriptions / tool results reaching both the user and the model are ANSI-sanitized (T3)?</item>
   </verify>
+
+  <!--
+    T1 (line jumping) and T3 (ANSI deception) are published ToB disclosures;
+    full context + provenance + reference mitigation (mcp-context-protector)
+    in skills/knowledge/tob-mcp-agent-attack-catalog.md.
+  -->
 
 </policy>
 ```

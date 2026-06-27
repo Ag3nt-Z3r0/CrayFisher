@@ -21,6 +21,9 @@ Full distribution and weighting formula:
 [skills/00-meta/agent-cwe-priority.md](skills/00-meta/agent-cwe-priority.md).
 Distilled corpus and patterns:
 [skills/knowledge/agent-zero-db-distill.md](skills/knowledge/agent-zero-db-distill.md).
+Published real-world MCP/agent attack classes (Trail of Bits — line jumping,
+ANSI deception, plaintext keys, indirect-injection→RCE, polyglots):
+[skills/knowledge/tob-mcp-agent-attack-catalog.md](skills/knowledge/tob-mcp-agent-attack-catalog.md).
 
 **Output independence.** Reports are written under `reports/<repo-name>/` using
 the existing [skills/05-report/cve-report.md](skills/05-report/cve-report.md)
@@ -137,9 +140,12 @@ clone → detect_stack.py
             │           + chain-primitives Semgrep rules first; web rules
             │           only on non-agent files
             │  Phase 3: ai-agent-flows.md (A1–A10) primary
+            │           → variant-analysis.md (3-D) on each confirmed find
             │           → exploit-chaining.md (3-C) composes chains last
+            │           (3-E agentic-ci-injection runs if .github/workflows/)
             │  Phase 4: agent policies + agent-default-checks gate
             │           + exploit-chain policy for CHAIN findings
+            │           + fp-check-gate (4-D) before any high-impact report
             │
             └─ is_agent_target = false
                   ↓
@@ -161,6 +167,12 @@ trust-graph marks as agent-irrelevant (admin HTTP, ORM, static assets).
 |---|---|
 | 1-A | [skills/01-recon/profile-repo.md](skills/01-recon/profile-repo.md) |
 | 1-B | [skills/01-recon/entry-point-analysis.md](skills/01-recon/entry-point-analysis.md) |
+| 1-C | [skills/01-recon/diff-review.md](skills/01-recon/diff-review.md) |
+
+1-C (differential review, adapted from Trail of Bits) is an **alternate entry
+mode**: when the input names a base ref / PR / release (or asks to review recent
+changes), scope Phases 2–4 to the diff and hunt **regressions** (a guard a
+commit quietly removed). Otherwise run the whole-repo flow (1-A → 1-B).
 
 ```bash
 python tools/clone.py <url>
@@ -170,6 +182,10 @@ python tools/architecture_map.py <local_path>
 python tools/agent_trust_graph.py <local_path>
 python tools/find_entries.py <local_path>
 python tools/osv_lookup.py <package> <ecosystem>
+# change/PR/release review mode (Skill 1-C):
+python tools/diff_collect.py <local_path> [--base <ref>] [--head <ref>]
+# if .github/workflows/ exists (both modes — feeds Phase 3-E):
+python tools/ci_agent_scan.py <local_path>
 # optional, agent-target only:
 python tools/ghsa_lookup.py <package>
 ```
@@ -180,6 +196,12 @@ python tools/ghsa_lookup.py <package>
 |---|---|
 | 2-A | [skills/02-static/semgrep-interpret.md](skills/02-static/semgrep-interpret.md) |
 | 2-B | [skills/02-static/manual-code-review.md](skills/02-static/manual-code-review.md) |
+| 2-C | [skills/02-static/sharp-edges.md](skills/02-static/sharp-edges.md) |
+
+2-C (sharp edges, adapted from Trail of Bits) reads the framework's **public API
+surface** for footgun designs (dangerous defaults, stringly-typed trust,
+injectable mode selectors). Highest value on *framework* targets, where one
+unsafe default propagates into every downstream product.
 
 ```bash
 python tools/semgrep_run.py <local_path>
@@ -195,10 +217,22 @@ python tools/file_read.py <file> <line> --context 15
 | 3-A | [skills/03-taint/source-sink-trace.md](skills/03-taint/source-sink-trace.md) |
 | 3-B | [skills/03-taint/ai-agent-flows.md](skills/03-taint/ai-agent-flows.md) |
 | 3-C | [skills/03-taint/exploit-chaining.md](skills/03-taint/exploit-chaining.md) |
+| 3-D | [skills/03-taint/variant-analysis.md](skills/03-taint/variant-analysis.md) |
+| 3-E | [skills/03-taint/agentic-ci-injection.md](skills/03-taint/agentic-ci-injection.md) |
 
 When `is_agent_target = true`, 3-B is the **primary** skill (A1–A10 patterns).
 3-A applies to non-agent entry points only. When `is_agent_target = false`,
 3-A is primary and 3-B is skipped.
+
+3-D (variant analysis, adapted from Trail of Bits) runs **after any finding is
+confirmed**: it searches the whole codebase for sibling instances of the same
+root cause ("find one, find ten"), each re-verified independently. New variants
+become primitives for 3-C.
+
+3-E (agentic CI injection, adapted from Trail of Bits `agentic-actions-auditor`)
+runs whenever Phase 1 finds `.github/workflows/`, in **both** modes (it is
+trigger-driven, independent of `is_agent_target`). It finds attacker GitHub
+event data reaching an AI coding agent in CI → RCE/secret exfil.
 
 3-C runs **last** in every mode: it consumes the primitives that 3-A/3-B/Semgrep
 produced and **composes them into critical chains** (RCE, LPE, sandbox escape,
@@ -222,10 +256,17 @@ grep -rn "<symbol>" <local_path> --include="*.ts" --include="*.py"
 | 4-A | [skills/04-validate/criteria-gate.md](skills/04-validate/criteria-gate.md) |
 | 4-B | [skills/04-validate/fp-patterns.md](skills/04-validate/fp-patterns.md) |
 | 4-C | [skills/04-validate/cvss-scoring.md](skills/04-validate/cvss-scoring.md) |
+| 4-D | [skills/04-validate/fp-check-gate.md](skills/04-validate/fp-check-gate.md) |
 
 When `is_agent_target = true`, also enforce
 [skills/00-meta/agent-default-checks.md](skills/00-meta/agent-default-checks.md)
 as a mandatory gate inside criteria-gate §2.
+
+4-D (FP-check gate, adapted from Trail of Bits `fp-check`) runs after 4-A and
+before 4-C. It is **mandatory** for any high-impact finding (RCE/LPE/
+sandbox-escape), any `CHAIN`, or any finding ≥ 0.70 confidence: restate the
+claim (Step 0), route standard vs deep, and try to break it before reporting.
+In Multi-Agent mode it is the defender's core procedure.
 
 ### Phase 5 — Report
 
@@ -254,6 +295,8 @@ Output path is always `reports/<repo-name>/`.
 | `ghsa_lookup.py` | `python tools/ghsa_lookup.py <pkg>` | offline seed hits + online GHSA results |
 | `incomplete_fix_scan.py` | `python tools/incomplete_fix_scan.py <path>` | `candidates[].{commit, file, pattern, score}` |
 | `env_denylist_fuzz.py` | `python tools/env_denylist_fuzz.py <path>` | `variants[]` (case, prefix/suffix, unicode lookalike) |
+| `ci_agent_scan.py` | `python tools/ci_agent_scan.py <path>` | `workflows[].{file, triggers, ai_actions[], event_expressions[], env_event_vars[], permissions, risky_config[]}` (feeds 3-E) |
+| `diff_collect.py` | `python tools/diff_collect.py <path> [--base <ref>] [--head <ref>]` | `files[].{file, status, added, deleted, categories_touched, removed_protection_lines, risk_hint}`, `commits[]` (feeds 1-C) |
 
 ---
 
@@ -278,7 +321,8 @@ Ranked by Agent-Zero-DB empirical weight. P0 = top quartile of the corpus
 | Excessive Agency | CWE-250/269 | LLM06 | **P0** | Trust graph + Manual |
 | Prompt Injection (general) | CWE-1427 | LLM01 | **P0** | Semgrep + Taint + Manual |
 | Tool Result Injection | CWE-1427 | LLM01 | **P0** | Taint (A3) |
-| MCP Tool Poisoning | CWE-1427 | LLM01 | **P0** | Manual |
+| MCP Tool Poisoning (incl. line jumping / ANSI) | CWE-1427/150 | LLM01 | **P0** | Manual + [tob catalog](skills/knowledge/tob-mcp-agent-attack-catalog.md) |
+| Agentic CI Injection (event data → AI agent) | CWE-1427/77 | LLM01 | P1 | Taint (3-E) + `ci_agent_scan.py` |
 | Agent Authorization / Scope Escalation | CWE-863/284/285/269 | LLM06 | **P0** | Manual |
 | Memory Poisoning | CWE-1427 | LLM01 | **P0** | Taint (A6) |
 | Sandbox Escape | CWE-269/367/59 | LLM06 | **P0** | Manual |

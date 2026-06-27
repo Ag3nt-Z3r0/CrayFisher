@@ -79,6 +79,14 @@ as a single finding, so it is not lost.
 
 ## Procedure (per finding)
 
+Your systematic method is [`../04-validate/fp-check-gate.md`](../04-validate/fp-check-gate.md)
+(Skill 4-D, adapted from Trail of Bits `fp-check`). Before Step 1, run its
+**Step 0** — restate the claim (exact claim, root cause, trigger, threat model,
+data flow, caller constraints) — and watch for its critical rejection criteria
+(pattern-recognition-alone, skipped data-flow, "a sibling was vulnerable",
+unread upstream validation, severity bias). For high-impact / `CHAIN` /
+≥ 0.70-confidence findings, use its **deep** route. Then proceed:
+
 ### Step 1 — Read the policy
 
 Open `skills/04-validate/policies/<type>.md`. List its
